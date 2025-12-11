@@ -633,11 +633,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     processed_query = rewritten_query
                     
                     # 1. 保存用户消息到历史记录（保存原始消息）
-                    save_message(
+                    user_msg_data = save_message(
                         session_id=session_id,
                         role="user",
                         message=user_message,
                     )
+                    
+                    # 1.5. 立即返回用户消息确认（与原项目流程一致）
+                    user_msg_type = msg_data.get("type", "text")  # 从请求中获取 type，默认为 "text"
+                    user_response = {
+                        "type": MsgType.NEW_CHAT_MESSAGE,
+                        "data": {
+                            "session_id": session_id,
+                            "content": user_message,
+                            "message_id": user_msg_data.get("message_id", ""),
+                            "role": "user",
+                            "timestamp": user_msg_data.get("timestamp", int(datetime.now().timestamp())),
+                            "type": user_msg_type,
+                        }
+                    }
+                    await websocket.send_text(json.dumps(user_response, ensure_ascii=False))
+                    logger.info(f"已返回用户消息确认: message_id={user_msg_data.get('message_id')}")
                 
                     # 2. 意图识别（使用历史记录和重写后的问题）
                     intent, intent_stats = await intent_agent.get_intent(
@@ -782,13 +798,20 @@ async def websocket_endpoint(websocket: WebSocket):
                                         ]
                                     })
                 
-                    # 5. 使用 ThinkingAgent 生成最终回答（基于专家回答或数据查询结果）
+                    # 5. 生成 AI 回答（流式返回，与原项目流程一致）
+                    import uuid
+                    assistant_message_id = str(uuid.uuid4())
+                    assistant_timestamp = int(datetime.now().timestamp())
+                    
                     thinking_context = {
                         "intent": intent,
                         "route_decision": route_decision,
                         "original_query": user_message,  # 保留原始问题供参考
                         **context,
                     }
+                    
+                    # 累积 AI 回答内容
+                    assistant_content = ""
                     
                     # 如果专家咨询成功，使用专家的回答作为主要输入
                     if expert_response and expert_response.get("success"):
@@ -797,13 +820,34 @@ async def websocket_endpoint(websocket: WebSocket):
                         thinking_context["expert_confidence"] = expert_response.get("confidence", 0.0)
                         thinking_context["expert_sources"] = expert_response.get("sources", [])
                         
-                        # 基于专家的回答生成最终回答
+                        # 基于专家的回答生成最终回答（流式）
+                        # 注意：这里需要修改 thinking_agent 支持流式输出
                         analysis, stats = await thinking_agent.think(
                             user_input=f"用户问题：{user_message}\n\n专家回答：{expert_response.get('answer', '')}",  # 将专家回答作为输入
                             context=thinking_context,
                             memory=history,  # 传入历史记录
                             tool_results=None,  # 专家已经处理了数据查询，不需要tool_results
+                            stream=True,  # 启用流式输出
                         )
+                        
+                        # 流式发送 AI 回答（模拟流式，实际应该逐块发送）
+                        # 为了简化，先一次性发送完整内容，后续可以优化为真正的流式
+                        assistant_content = str(analysis) if analysis is not None else ""
+                        
+                        # 发送流式消息块（与原项目格式一致）
+                        stream_response = {
+                            "type": MsgType.STREAM_CHUNK,
+                            "data": {
+                                "session_id": session_id,
+                                "content": assistant_content,
+                                "event": "content",
+                                "message_id": assistant_message_id,
+                                "role": "assistant",
+                                "timestamp": assistant_timestamp,
+                                "type": "stream_chunk",
+                            }
+                        }
+                        await websocket.send_text(json.dumps(stream_response, ensure_ascii=False))
                     else:
                         # 如果没有专家回答，使用数据查询结果（如果有）
                         analysis, stats = await thinking_agent.think(
@@ -811,13 +855,32 @@ async def websocket_endpoint(websocket: WebSocket):
                             context=thinking_context,
                             memory=history,  # 传入历史记录
                             tool_results=tool_results if tool_results else None,
+                            stream=True,  # 启用流式输出
                         )
+                        
+                        # 流式发送 AI 回答
+                        assistant_content = str(analysis) if analysis is not None else ""
+                        
+                        # 发送流式消息块（与原项目格式一致）
+                        stream_response = {
+                            "type": MsgType.STREAM_CHUNK,
+                            "data": {
+                                "session_id": session_id,
+                                "content": assistant_content,
+                                "event": "content",
+                                "message_id": assistant_message_id,
+                                "role": "assistant",
+                                "timestamp": assistant_timestamp,
+                                "type": "stream_chunk",
+                            }
+                        }
+                        await websocket.send_text(json.dumps(stream_response, ensure_ascii=False))
                     
                     # 6. 保存 AI 回答到历史记录
                     save_message(
                         session_id=session_id,
                         role="assistant",
-                        message=analysis,
+                        message=assistant_content,
                         intent=intent,
                         metadata={
                             "route_decision": route_decision,
@@ -825,25 +888,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             "expert_consulted": bool(expert_response and expert_response.get("success")),
                         },
                     )
-                    
-                    # 7. 发送响应（使用标准消息格式）
-                    # 确保 response 字段不为 None，避免前端 marked.js 报错
-                    response_text = str(analysis) if analysis is not None else ""
-                    
-                    response = {
-                        "type": MsgType.NEW_CHAT_MESSAGE,
-                        "data": {
-                            "status": "success",
-                            "response": response_text,  # 确保是字符串，不为 None
-                            "intent": intent if intent else "",
-                            "route_decision": route_decision if route_decision else {},
-                            "data_used": tool_results if tool_results else None,
-                            "expert_response": expert_response if expert_response else None,
-                            "session_id": session_id or "",
-                            "history_count": len(history) + 2,
-                        }
-                    }
-                    await websocket.send_text(json.dumps(response, ensure_ascii=False))
                 
             except json.JSONDecodeError:
                 await websocket.send_text(json.dumps({

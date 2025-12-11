@@ -20,7 +20,7 @@ def save_message(
     message: str,
     intent: Optional[str] = None,
     metadata: Optional[Dict] = None,
-) -> int:
+) -> Dict:
     """
     保存对话消息到历史记录
     
@@ -32,19 +32,25 @@ def save_message(
         metadata: 额外信息（可选，存储在 meta_data 字段）
         
     Returns:
-        int: 保存的记录ID
+        Dict: 包含完整消息信息的字典，包括 id, message_id, timestamp 等
     """
     try:
+        import uuid
         from datetime import datetime
         with get_db() as db:
+            # 生成 message_id (UUID)
+            message_id = str(uuid.uuid4())
+            timestamp = datetime.now()
+            
             chat_record = ChatHistory(
                 session_id=session_id,
                 role=role,
                 content=message,  # 使用 content 字段
                 message_type=intent,  # 将 intent 存储在 type 字段（通过 message_type 属性）
-                timestamp=datetime.now(),  # 使用 timestamp 字段
+                timestamp=timestamp,  # 使用 timestamp 字段
+                message_id=message_id,  # 保存 message_id
                 meta_data=json.dumps(metadata, ensure_ascii=False) if metadata else None,  # 使用 meta_data 字段
-                updated_at=datetime.now(),
+                updated_at=timestamp,
             )
             db.add(chat_record)
             db.commit()
@@ -53,8 +59,19 @@ def save_message(
             # 获取 ID 后立即返回，避免会话分离问题
             record_id = chat_record.id
             
-            logger.debug(f"保存对话记录: session_id={session_id}, role={role}, id={record_id}")
-            return record_id
+            # 返回完整的消息信息（与原项目格式一致）
+            result = {
+                "id": record_id,
+                "message_id": message_id,
+                "session_id": session_id,
+                "role": role,
+                "content": message,
+                "type": intent or "text",  # 使用 intent 或默认 "text"
+                "timestamp": int(timestamp.timestamp()),  # Unix 时间戳
+            }
+            
+            logger.debug(f"保存对话记录: session_id={session_id}, role={role}, id={record_id}, message_id={message_id}")
+            return result
     except Exception as e:
         logger.error(f"保存对话记录失败: {e}", exc_info=True)
         raise

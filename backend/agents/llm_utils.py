@@ -79,10 +79,12 @@ async def execute_llm_call(
     
     try:
         if stream:
-            # 流式调用
+            # 流式调用 - 收集所有块后返回完整内容
+            # 注意：如果需要真正的流式输出，需要修改为生成器或回调函数
             chunks = []
             async for chunk in llm.astream(messages):
-                chunks.append(chunk.content)
+                if hasattr(chunk, 'content') and chunk.content:
+                    chunks.append(chunk.content)
             response_content = "".join(chunks)
         else:
             # 非流式调用
