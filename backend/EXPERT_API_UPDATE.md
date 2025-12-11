@@ -8,7 +8,7 @@
 
 ### 端点信息
 
-- **URL**: `{EXPERT_API_BASE_URL}/sse/stream_qa`
+- **URL**: `{EXPERT_API_BASE_URL}/sse/stream_qa`（默认: `http://localhost:5003/sse/stream_qa`）
 - **Method**: `GET`（不是POST）
 - **响应类型**: SSE (Server-Sent Events) 流式响应
 - **Content-Type**: `text/event-stream`
@@ -27,7 +27,7 @@
 ### 请求示例
 
 ```bash
-GET http://localhost:5001/sse/stream_qa?query=查询当前养殖池的pH值数据&agent_type=japan&session_id=session_123&config={"model":"gpt-4o-mini","temperature":0.7}
+GET http://localhost:5003/sse/stream_qa?query=查询当前养殖池的pH值数据&agent_type=japan&session_id=session_123&config={"model":"gpt-4o-mini","temperature":0.7}
 ```
 
 ### 响应格式
@@ -52,7 +52,7 @@ event: message
 ### 默认配置
 
 ```python
-EXPERT_API_BASE_URL=http://localhost:5001  # 默认地址
+EXPERT_API_BASE_URL=http://localhost:5003  # 默认地址
 EXPERT_API_TIMEOUT=60  # SSE流式响应需要更长时间
 ```
 
@@ -61,8 +61,8 @@ EXPERT_API_TIMEOUT=60  # SSE流式响应需要更长时间
 在 `.env` 文件中可以覆盖：
 
 ```bash
-# 专家API基础地址（默认: http://localhost:5001）
-EXPERT_API_BASE_URL=http://localhost:5001
+# 专家API基础地址（默认: http://localhost:5003）
+EXPERT_API_BASE_URL=http://localhost:5003
 
 # 专家API密钥（可选）
 EXPERT_API_KEY=your_api_key_here
@@ -109,7 +109,7 @@ async with client.stream("GET", url, params=params) as response:
   "type": "external_api",
   "mode": "async",
   "location": {
-    "url": "http://localhost:5001/sse/stream_qa",
+    "url": "http://localhost:5003/sse/stream_qa",
     "method": "GET",
     "stream_api": true
   },

@@ -26,7 +26,7 @@ class ExpertConsultationService:
     def __init__(self):
         """初始化专家咨询服务"""
         # 默认使用参考配置中的地址
-        self.base_url = settings.EXPERT_API_BASE_URL or "http://localhost:5001"
+        self.base_url = settings.EXPERT_API_BASE_URL or "http://localhost:5003"
         self.api_key = settings.EXPERT_API_KEY
         self.timeout = settings.EXPERT_API_TIMEOUT
         self.agent_type = "japan"  # 固定为 "japan"，参考 tools.json
@@ -83,8 +83,8 @@ class ExpertConsultationService:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 logger.info(f"咨询外部专家 (SSE): {query[:50]}...")
                 
-                # 使用GET请求，参考 tools.json 中的配置
-                url = f"{self.base_url}/sse/stream_qa"
+                # 使用GET请求，实际端点为 /chat/stream
+                url = f"{self.base_url}/chat/stream"
                 
                 async with client.stream(
                     "GET",
@@ -92,7 +92,29 @@ class ExpertConsultationService:
                     params=params,
                     headers=headers,
                 ) as response:
-                    response.raise_for_status()
+                    # 对于流式响应，先检查状态码，避免直接调用 raise_for_status()
+                    if response.status_code != 200:
+                        # 对于非200状态码，尝试读取错误信息
+                        error_text = ""
+                        try:
+                            # 读取错误响应内容
+                            async for chunk in response.aiter_bytes():
+                                error_text += chunk.decode('utf-8', errors='ignore')
+                                if len(error_text) > 1000:  # 限制读取长度
+                                    break
+                        except Exception:
+                            pass
+                        
+                        error_msg = f"HTTP {response.status_code}"
+                        if error_text:
+                            error_msg = f"{error_msg}: {error_text[:200]}"
+                        
+                        logger.error(f"专家咨询HTTP错误: {error_msg}")
+                        return {
+                            "success": False,
+                            "error": f"HTTP错误: {response.status_code}",
+                            "answer": None,
+                        }
                     
                     # 读取SSE流式响应
                     answer_parts = []
@@ -158,7 +180,9 @@ class ExpertConsultationService:
                 "answer": None,
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"专家咨询HTTP错误: {e.response.status_code} - {e.response.text}")
+            # 对于流式响应，不能直接访问 .text，需要先读取
+            error_detail = f"HTTP {e.response.status_code}"
+            logger.error(f"专家咨询HTTP错误: {error_detail}")
             return {
                 "success": False,
                 "error": f"HTTP错误: {e.response.status_code}",

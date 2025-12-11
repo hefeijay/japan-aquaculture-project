@@ -80,7 +80,7 @@
 ## 配置
 
 专家服务配置保持不变：
-- `EXPERT_API_BASE_URL`: 专家API地址（默认: http://localhost:5001）
+- `EXPERT_API_BASE_URL`: 专家API地址（默认: http://localhost:5003）
 - `ENABLE_EXPERT_CONSULTATION`: 是否启用专家咨询（默认: true）
 
 ## 测试
