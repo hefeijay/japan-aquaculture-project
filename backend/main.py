@@ -418,21 +418,8 @@ async def get_chat_history(
     """获取对话历史记录"""
     try:
         history_records = get_history(session_id, limit=limit)
-        # get_history 现在返回字典列表，需要转换为 JSON 兼容格式
-        result = []
-        for record in history_records:
-            result.append({
-                "id": record["id"],
-                "session_id": record["session_id"],
-                "role": record["role"],
-                "message": record["message"],
-                "content": record["content"],
-                "type": record.get("message_type"),
-                "timestamp": record["timestamp"].isoformat() if record["timestamp"] else None,
-                "created_at": record["created_at"].isoformat() if record["created_at"] else None,
-                "metadata": record.get("metadata"),
-            })
-        return {"history": result, "count": len(result), "session_id": session_id}
+        # get_history 现在返回字典列表，直接使用
+        return {"history": history_records, "count": len(history_records), "session_id": session_id}
     except Exception as e:
         logger.error("获取对话历史失败", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

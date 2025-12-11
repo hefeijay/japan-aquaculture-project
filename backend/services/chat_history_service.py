@@ -48,7 +48,9 @@ def save_message(
             )
             db.add(chat_record)
             db.commit()
-            # 在会话关闭前获取ID
+            db.refresh(chat_record)
+            
+            # 获取 ID 后立即返回，避免会话分离问题
             record_id = chat_record.id
             
             logger.debug(f"保存对话记录: session_id={session_id}, role={role}, id={record_id}")
@@ -72,7 +74,7 @@ def get_history(
         before_id: 获取此ID之前的记录（用于分页）
         
     Returns:
-        List[Dict]: 历史记录列表（字典格式），按时间正序排列
+        List[Dict]: 历史记录字典列表，按时间正序排列
     """
     try:
         with get_db() as db:
@@ -86,21 +88,8 @@ def get_history(
             # 使用 timestamp 字段排序（兼容 created_at）
             records = query.order_by(ChatHistory.timestamp.asc()).limit(limit).all()
             
-            # 在会话关闭前转换为字典，避免会话外访问对象属性
-            result = []
-            for record in records:
-                result.append({
-                    "id": record.id,
-                    "session_id": record.session_id,
-                    "role": record.role,
-                    "content": record.content,
-                    "message": record.content or "",  # 兼容属性
-                    "message_type": record.message_type,
-                    "timestamp": record.timestamp,
-                    "created_at": record.timestamp,  # 兼容属性
-                    "meta_data": record.meta_data,
-                    "metadata": record.meta_data,  # 兼容属性
-                })
+            # 在会话关闭之前转换为字典，避免会话分离问题
+            result = [record.to_dict() for record in records]
             
             logger.debug(f"获取对话历史: session_id={session_id}, count={len(result)}")
             return result
@@ -114,14 +103,14 @@ def format_history_for_llm(history: List[Dict]) -> List[Dict[str, str]]:
     将历史记录格式化为 LLM 需要的格式
     
     Args:
-        history: 历史记录列表（字典格式）
+        history: 历史记录字典列表
         
     Returns:
         List[Dict[str, str]]: 格式化的历史记录，格式为 [{"role": "user", "content": "..."}, ...]
     """
     formatted = []
     for record in history:
-        # record 现在是字典格式
+        # record 现在是字典，直接访问键
         message_content = record.get("message") or record.get("content") or ""
         role = record.get("role")
         if message_content and role:  # 只添加有效的记录
