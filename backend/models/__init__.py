@@ -8,6 +8,7 @@ from .image_detection import ImageDetection
 from .operation_log import OperationLog
 from .manual_doc import ManualDoc
 from .history_record import HistoryRecord
+from .chat_history import ChatHistory
 
 __all__ = [
     "Batch",
@@ -19,5 +20,6 @@ __all__ = [
     "OperationLog",
     "ManualDoc",
     "HistoryRecord",
+    "ChatHistory",
 ]
 

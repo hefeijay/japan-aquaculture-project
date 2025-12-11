@@ -18,6 +18,12 @@ from models.sensor_reading import SensorReading
 from agents.thinking_agent import ThinkingAgent
 from agents.intent_agent import IntentAgent
 from agents.routing_agent import RoutingAgent
+from services.chat_history_service import (
+    save_message,
+    get_history,
+    format_history_for_llm,
+    clear_history,
+)
 
 # 配置日志
 structlog.configure(
@@ -142,10 +148,21 @@ async def chat(
         session_id = input.session_id or "default"
         context = input.context or {}
         
-        # 1. 意图识别
+        # 0. 获取历史对话记录
+        history_records = get_history(session_id, limit=20)
+        history = format_history_for_llm(history_records)
+        
+        # 1. 保存用户消息到历史记录
+        save_message(
+            session_id=session_id,
+            role="user",
+            message=user_message,
+        )
+        
+        # 2. 意图识别（使用历史记录）
         intent, intent_stats = await intent_agent.get_intent(
             user_input=user_message,
-            history=[],
+            history=history,
         )
         
         # 2. 路由决策
@@ -243,7 +260,7 @@ async def chat(
                         ]
                     })
         
-        # 4. 使用 ThinkingAgent 生成回答
+        # 4. 使用 ThinkingAgent 生成回答（使用历史记录）
         analysis, stats = await thinking_agent.think(
             user_input=user_message,
             context={
@@ -251,10 +268,23 @@ async def chat(
                 "route_decision": route_decision,
                 **context,
             },
+            memory=history,  # 传入历史记录
             tool_results=tool_results if tool_results else None,
         )
         
         response_content = analysis
+        
+        # 5. 保存 AI 回答到历史记录
+        save_message(
+            session_id=session_id,
+            role="assistant",
+            message=response_content,
+            intent=intent,
+            metadata={
+                "route_decision": route_decision,
+                "data_used": bool(tool_results),
+            },
+        )
         
         return {
             "status": "success",
@@ -263,6 +293,7 @@ async def chat(
             "route_decision": route_decision,
             "data_used": tool_results if tool_results else None,
             "session_id": session_id,
+            "history_count": len(history) + 2,  # 包含刚保存的两条消息
         }
         
     except Exception as e:
@@ -375,6 +406,49 @@ async def get_sensor_readings(
         return {"readings": result, "count": len(result)}
     except Exception as e:
         logger.error("获取传感器读数失败", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/chat/history")
+async def get_chat_history(
+    session_id: str,
+    limit: int = 20,
+    db: Session = Depends(get_db_session),
+):
+    """获取对话历史记录"""
+    try:
+        history_records = get_history(session_id, limit=limit)
+        # get_history 现在返回字典列表，需要转换为 JSON 兼容格式
+        result = []
+        for record in history_records:
+            result.append({
+                "id": record["id"],
+                "session_id": record["session_id"],
+                "role": record["role"],
+                "message": record["message"],
+                "content": record["content"],
+                "type": record.get("message_type"),
+                "timestamp": record["timestamp"].isoformat() if record["timestamp"] else None,
+                "created_at": record["created_at"].isoformat() if record["created_at"] else None,
+                "metadata": record.get("metadata"),
+            })
+        return {"history": result, "count": len(result), "session_id": session_id}
+    except Exception as e:
+        logger.error("获取对话历史失败", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/v1/chat/history")
+async def delete_chat_history(
+    session_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """清除对话历史记录"""
+    try:
+        count = clear_history(session_id)
+        return {"status": "success", "deleted": count, "session_id": session_id}
+    except Exception as e:
+        logger.error("清除对话历史失败", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -512,7 +586,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     ]
                                 })
                 
-                # 4. 使用 ThinkingAgent 生成回答
+                # 4. 使用 ThinkingAgent 生成回答（使用历史记录）
                 analysis, stats = await thinking_agent.think(
                     user_input=user_message,
                     context={
@@ -520,10 +594,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         "route_decision": route_decision,
                         **context,
                     },
+                    memory=history,  # 传入历史记录
                     tool_results=tool_results if tool_results else None,
                 )
                 
-                # 5. 发送响应
+                # 5. 保存 AI 回答到历史记录
+                save_message(
+                    session_id=session_id,
+                    role="assistant",
+                    message=analysis,
+                    intent=intent,
+                    metadata={
+                        "route_decision": route_decision,
+                        "data_used": bool(tool_results),
+                    },
+                )
+                
+                # 6. 发送响应
                 response = {
                     "status": "success",
                     "response": analysis,
@@ -531,6 +618,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "route_decision": route_decision,
                     "data_used": tool_results if tool_results else None,
                     "session_id": session_id,
+                    "history_count": len(history) + 2,  # 包含刚保存的两条消息
                 }
                 
                 await websocket.send_text(json.dumps(response, ensure_ascii=False))
