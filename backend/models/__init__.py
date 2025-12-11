@@ -1,4 +1,5 @@
 # 数据库模型
+from .base import Base
 from .batch import Batch
 from .device import Device
 from .sensor_reading import SensorReading
@@ -9,8 +10,10 @@ from .operation_log import OperationLog
 from .manual_doc import ManualDoc
 from .history_record import HistoryRecord
 from .chat_history import ChatHistory
+from .session import Session
 
 __all__ = [
+    "Base",
     "Batch",
     "Device",
     "SensorReading",
@@ -21,5 +24,6 @@ __all__ = [
     "ManualDoc",
     "HistoryRecord",
     "ChatHistory",
+    "Session",
 ]
 

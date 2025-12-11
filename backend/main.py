@@ -3,6 +3,7 @@
 """
 FastAPI 主应用 - 参考 singa_one_server 的设计
 """
+import json
 import logging
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,8 @@ from services.chat_history_service import (
     clear_history,
 )
 from services.expert_consultation_service import expert_service
+from services.session_service import initialize_session
+from core.constants import MsgType
 
 # 配置日志
 structlog.configure(
@@ -358,7 +361,8 @@ async def chat(
                 tool_results=tool_results if tool_results else None,
             )
         
-        response_content = analysis
+        # 确保 response_content 不为 None，避免前端 marked.js 报错
+        response_content = str(analysis) if analysis is not None else ""
         
         # 5. 保存 AI 回答到历史记录
         save_message(
@@ -374,9 +378,9 @@ async def chat(
         
         return {
             "status": "success",
-            "response": response_content,
-            "intent": intent,
-            "route_decision": route_decision,
+            "response": response_content,  # 确保是字符串，不为 None
+            "intent": intent if intent else "",
+            "route_decision": route_decision if route_decision else {},
             "data_used": tool_results if tool_results else None,
             "session_id": session_id,
             "history_count": len(history) + 2,  # 包含刚保存的两条消息
@@ -546,6 +550,8 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket 连接已建立", client=str(websocket.client))
     
+    session_id = None  # 会话ID，在收到 init 消息后设置
+    
     try:
         while True:
             # 接收消息
@@ -554,115 +560,155 @@ async def websocket_endpoint(websocket: WebSocket):
             
             try:
                 message_data = json.loads(data)
-                user_message = message_data.get("message", "")
-                session_id = message_data.get("session_id", f"ws_{websocket.client}")
-                context = message_data.get("context", {})
+                msg_type = message_data.get("type")
+                msg_data = message_data.get("data", {})
                 
-                if not user_message:
-                    await websocket.send_text(json.dumps({
-                        "error": "消息格式错误：缺少 'message' 字段"
-                    }, ensure_ascii=False))
+                # 处理心跳消息
+                if msg_type == MsgType.PING:
+                    await websocket.send_text(json.dumps({"type": MsgType.PONG}))
                     continue
                 
-                # 0. 获取历史对话记录
-                history_records = get_history(session_id, limit=20)
-                history = format_history_for_llm(history_records)
+                # 处理初始化消息
+                if msg_type == MsgType.INIT:
+                    init_session_id = msg_data.get("session_id")
+                    user_id = msg_data.get("user_id", "default_user")
+                    
+                    # 初始化会话
+                    init_data = initialize_session(init_session_id, user_id)
+                    session_id = init_data["session_id"]
+                    
+                    # 返回初始化响应
+                    response = {
+                        "type": MsgType.INIT_RESPONSE,
+                        "data": init_data
+                    }
+                    await websocket.send_text(json.dumps(response, ensure_ascii=False))
+                    logger.info(f"会话初始化完成: {session_id}, 用户: {user_id}")
+                    continue
                 
-                # 0.5. 查询重写（基于上下文重写用户问题，拆分成更具体的问题）
-                rewritten_query, rewrite_stats = await query_rewriter.rewrite(
-                    user_input=user_message,
-                    history=history,
-                    context=context,
-                )
+                # 对于其他消息，需要先初始化会话
+                if not session_id:
+                    # 尝试从消息中获取 session_id
+                    session_id = msg_data.get("session_id")
+                    if not session_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "error": "会话未初始化，请先发送 init 消息"
+                        }, ensure_ascii=False))
+                        continue
                 
-                # 打印重写结果
-                print("=" * 80)
-                print("📝 查询重写结果 (WebSocket):")
-                print(f"   原始问题: {user_message}")
-                print(f"   重写后:   {rewritten_query}")
-                print("=" * 80)
-                logger.info("查询重写完成", original=user_message, rewritten=rewritten_query)
+                # 处理用户消息
+                if msg_type == MsgType.USER_SEND_MESSAGE or msg_type is None:
+                    # 兼容旧的消息格式（没有 type 字段，直接是 message）
+                    user_message = msg_data.get("content") or msg_data.get("message") or message_data.get("message", "")
+                    context = msg_data.get("context", {}) or message_data.get("context", {})
+                    
+                    if not user_message:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "error": "消息格式错误：缺少 'message' 或 'content' 字段"
+                        }, ensure_ascii=False))
+                        continue
+                    
+                    # 0. 获取历史对话记录
+                    history_records = get_history(session_id, limit=20)
+                    history = format_history_for_llm(history_records)
+                    
+                    # 0.5. 查询重写（基于上下文重写用户问题，拆分成更具体的问题）
+                    rewritten_query, rewrite_stats = await query_rewriter.rewrite(
+                        user_input=user_message,
+                        history=history,
+                        context=context,
+                    )
+                    
+                    # 打印重写结果
+                    print("=" * 80)
+                    print("📝 查询重写结果 (WebSocket):")
+                    print(f"   原始问题: {user_message}")
+                    print(f"   重写后:   {rewritten_query}")
+                    print("=" * 80)
+                    logger.info("查询重写完成", original=user_message, rewritten=rewritten_query)
+                    
+                    # 使用重写后的问题进行后续处理
+                    processed_query = rewritten_query
+                    
+                    # 1. 保存用户消息到历史记录（保存原始消息）
+                    save_message(
+                        session_id=session_id,
+                        role="user",
+                        message=user_message,
+                    )
                 
-                # 使用重写后的问题进行后续处理
-                processed_query = rewritten_query
-                
-                # 1. 保存用户消息到历史记录（保存原始消息）
-                save_message(
-                    session_id=session_id,
-                    role="user",
-                    message=user_message,
-                )
-                
-                # 2. 意图识别（使用历史记录和重写后的问题）
-                intent, intent_stats = await intent_agent.get_intent(
-                    user_input=processed_query,  # 使用重写后的问题
-                    history=history,
-                )
-                
-                # 3. 路由决策（使用重写后的问题，判断是否需要调用专家）
-                route_decision = await routing_agent.route_decision(
-                    user_input=processed_query,  # 使用重写后的问题
-                    intent=intent,
-                    context=context,
-                )
-                
-                # 4. 根据路由决策执行操作
-                expert_response = None
-                
-                # 如果需要调用专家，由专家负责数据查询和聚合
-                if route_decision.get("needs_expert", False) or route_decision.get("needs_data", False):
-                    if settings.ENABLE_EXPERT_CONSULTATION:
-                        # 构建专家API配置（参考 cognitive_model/handlers/query_handler.py）
-                        expert_config = {
-                            "rag": {
-                                "collection_name": "japan_shrimp",
-                                "topk_single": 5,
-                                "topk_multi": 5
-                            },
-                            "mode": "single",
-                            "single": {
-                                "temperature": 0.4,
-                                "system_prompt": "你是一个日本陆上养殖领域的专家，你的任务是根据用户的问题，结合增强检索后的相关知识，进行数据查询、聚合分析，并给出专业的结论和建议。",
-                                "max_tokens": 4096
+                    # 2. 意图识别（使用历史记录和重写后的问题）
+                    intent, intent_stats = await intent_agent.get_intent(
+                        user_input=processed_query,  # 使用重写后的问题
+                        history=history,
+                    )
+                    
+                    # 3. 路由决策（使用重写后的问题，判断是否需要调用专家）
+                    route_decision = await routing_agent.route_decision(
+                        user_input=processed_query,  # 使用重写后的问题
+                        intent=intent,
+                        context=context,
+                    )
+                    
+                    # 4. 根据路由决策执行操作
+                    expert_response = None
+                    
+                    # 如果需要调用专家，由专家负责数据查询和聚合
+                    if route_decision.get("needs_expert", False) or route_decision.get("needs_data", False):
+                        if settings.ENABLE_EXPERT_CONSULTATION:
+                            # 构建专家API配置（参考 cognitive_model/handlers/query_handler.py）
+                            expert_config = {
+                                "rag": {
+                                    "collection_name": "japan_shrimp",
+                                    "topk_single": 5,
+                                    "topk_multi": 5
+                                },
+                                "mode": "single",
+                                "single": {
+                                    "temperature": 0.4,
+                                    "system_prompt": "你是一个日本陆上养殖领域的专家，你的任务是根据用户的问题，结合增强检索后的相关知识，进行数据查询、聚合分析，并给出专业的结论和建议。",
+                                    "max_tokens": 4096
+                                }
                             }
-                        }
-                        
-                        # 咨询外部日本养殖专家（专家负责数据查询和聚合）
-                        expert_response = await expert_service.consult(
-                            query=processed_query,  # 使用重写后的问题
-                            context={
-                                "original_query": user_message,
-                                "intent": intent,
-                                "route_decision": route_decision,
-                                **context,
-                            },
-                            session_id=session_id,
-                            config=expert_config,
-                        )
-                        
-                        if expert_response.get("success"):
-                            print("=" * 80)
-                            print("👨‍🔬 专家咨询结果 (WebSocket):")
-                            print(f"   专家回答: {expert_response.get('answer', '')[:100]}...")
-                            print(f"   置信度: {expert_response.get('confidence', 0.0)}")
-                            print("=" * 80)
-                            logger.info("专家咨询成功", answer_preview=expert_response.get('answer', '')[:50])
-                        else:
-                            print("=" * 80)
-                            print("⚠️  专家咨询失败 (WebSocket):")
-                            print(f"   错误: {expert_response.get('error', '未知错误')}")
-                            print("=" * 80)
-                            logger.warning("专家咨询失败", error=expert_response.get('error'))
-                
-                # 如果不需要专家，进行简单的数据查询（兜底方案）
-                tool_results = []
-                if not expert_response and route_decision.get("needs_data", False):
-                    # 简单的关键词匹配查询逻辑（仅作为兜底）
-                    from database import get_db
-                    with get_db() as db:
-                        query_text = processed_query.lower()
-                        if "水温" in processed_query or "温度" in processed_query or "temp" in query_text:
-                            query = db.query(SensorReading).filter(
+                            
+                            # 咨询外部日本养殖专家（专家负责数据查询和聚合）
+                            expert_response = await expert_service.consult(
+                                query=processed_query,  # 使用重写后的问题
+                                context={
+                                    "original_query": user_message,
+                                    "intent": intent,
+                                    "route_decision": route_decision,
+                                    **context,
+                                },
+                                session_id=session_id,
+                                config=expert_config,
+                            )
+                            
+                            if expert_response.get("success"):
+                                print("=" * 80)
+                                print("👨‍🔬 专家咨询结果 (WebSocket):")
+                                print(f"   专家回答: {expert_response.get('answer', '')[:100]}...")
+                                print(f"   置信度: {expert_response.get('confidence', 0.0)}")
+                                print("=" * 80)
+                                logger.info("专家咨询成功", answer_preview=expert_response.get('answer', '')[:50])
+                            else:
+                                print("=" * 80)
+                                print("⚠️  专家咨询失败 (WebSocket):")
+                                print(f"   错误: {expert_response.get('error', '未知错误')}")
+                                print("=" * 80)
+                                logger.warning("专家咨询失败", error=expert_response.get('error'))
+                    
+                    # 如果不需要专家，进行简单的数据查询（兜底方案）
+                    tool_results = []
+                    if not expert_response and route_decision.get("needs_data", False):
+                        # 简单的关键词匹配查询逻辑（仅作为兜底）
+                        from database import get_db
+                        with get_db() as db:
+                            query_text = processed_query.lower()
+                            if "水温" in processed_query or "温度" in processed_query or "temp" in query_text:
+                                query = db.query(SensorReading).filter(
                                 SensorReading.metric == "temp"
                             )
                             from sqlalchemy import func as sql_func
@@ -671,126 +717,133 @@ async def websocket_endpoint(websocket: WebSocket):
                             ).limit(10).all()
                             
                             if readings:
-                                tool_results.append({
-                                    "type": "sensor_data",
-                                    "metric": "temp",
-                                    "readings": [
-                                        {
-                                            "value": float(r.value),
-                                            "unit": r.unit or r.type_name,
-                                            "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
-                                            "pool_id": r.pool_id,
-                                            "sensor_id": r.sensor_id,
-                                        }
-                                        for r in readings
-                                    ]
-                                })
-                        
-                        elif "溶解氧" in processed_query or "do" in query_text or "氧" in processed_query:
-                            query = db.query(SensorReading).filter(
-                                SensorReading.metric == "do"
-                            )
-                            from sqlalchemy import func as sql_func
-                            readings = query.order_by(
-                                sql_func.coalesce(SensorReading.ts_utc, SensorReading.recorded_at).desc()
-                            ).limit(10).all()
+                                    tool_results.append({
+                                        "type": "sensor_data",
+                                        "metric": "temp",
+                                        "readings": [
+                                            {
+                                                "value": float(r.value),
+                                                "unit": r.unit or r.type_name,
+                                                "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
+                                                "pool_id": r.pool_id,
+                                                "sensor_id": r.sensor_id,
+                                            }
+                                            for r in readings
+                                        ]
+                                    })
                             
-                            if readings:
-                                tool_results.append({
-                                    "type": "sensor_data",
-                                    "metric": "do",
-                                    "readings": [
-                                        {
-                                            "value": float(r.value),
-                                            "unit": r.unit or r.type_name,
-                                            "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
-                                            "pool_id": r.pool_id,
-                                            "sensor_id": r.sensor_id,
-                                        }
-                                        for r in readings
-                                    ]
-                                })
-                        
-                        elif "ph" in query_text or "ph值" in processed_query:
-                            query = db.query(SensorReading).filter(
-                                SensorReading.metric == "ph"
-                            )
-                            from sqlalchemy import func as sql_func
-                            readings = query.order_by(
-                                sql_func.coalesce(SensorReading.ts_utc, SensorReading.recorded_at).desc()
-                            ).limit(10).all()
+                            elif "溶解氧" in processed_query or "do" in query_text or "氧" in processed_query:
+                                query = db.query(SensorReading).filter(
+                                    SensorReading.metric == "do"
+                                )
+                                from sqlalchemy import func as sql_func
+                                readings = query.order_by(
+                                    sql_func.coalesce(SensorReading.ts_utc, SensorReading.recorded_at).desc()
+                                ).limit(10).all()
+                                
+                                if readings:
+                                    tool_results.append({
+                                        "type": "sensor_data",
+                                        "metric": "do",
+                                        "readings": [
+                                            {
+                                                "value": float(r.value),
+                                                "unit": r.unit or r.type_name,
+                                                "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
+                                                "pool_id": r.pool_id,
+                                                "sensor_id": r.sensor_id,
+                                            }
+                                            for r in readings
+                                        ]
+                                    })
                             
-                            if readings:
-                                tool_results.append({
-                                    "type": "sensor_data",
-                                    "metric": "ph",
-                                    "readings": [
-                                        {
-                                            "value": float(r.value),
-                                            "unit": r.unit or r.type_name,
-                                            "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
-                                            "pool_id": r.pool_id,
-                                            "sensor_id": r.sensor_id,
-                                        }
-                                        for r in readings
-                                    ]
-                                })
+                            elif "ph" in query_text or "ph值" in processed_query:
+                                query = db.query(SensorReading).filter(
+                                    SensorReading.metric == "ph"
+                                )
+                                from sqlalchemy import func as sql_func
+                                readings = query.order_by(
+                                    sql_func.coalesce(SensorReading.ts_utc, SensorReading.recorded_at).desc()
+                                ).limit(10).all()
+                                
+                                if readings:
+                                    tool_results.append({
+                                        "type": "sensor_data",
+                                        "metric": "ph",
+                                        "readings": [
+                                            {
+                                                "value": float(r.value),
+                                                "unit": r.unit or r.type_name,
+                                                "timestamp": (r.ts_utc or r.recorded_at).isoformat() if (r.ts_utc or r.recorded_at) else None,
+                                                "pool_id": r.pool_id,
+                                                "sensor_id": r.sensor_id,
+                                            }
+                                            for r in readings
+                                        ]
+                                    })
                 
-                # 5. 使用 ThinkingAgent 生成最终回答（基于专家回答或数据查询结果）
-                thinking_context = {
-                    "intent": intent,
-                    "route_decision": route_decision,
-                    "original_query": user_message,  # 保留原始问题供参考
-                    **context,
-                }
-                
-                # 如果专家咨询成功，使用专家的回答作为主要输入
-                if expert_response and expert_response.get("success"):
-                    # 专家已经完成了数据查询和聚合，直接使用专家的回答
-                    thinking_context["expert_answer"] = expert_response.get("answer", "")
-                    thinking_context["expert_confidence"] = expert_response.get("confidence", 0.0)
-                    thinking_context["expert_sources"] = expert_response.get("sources", [])
-                    
-                    # 基于专家的回答生成最终回答
-                    analysis, stats = await thinking_agent.think(
-                        user_input=f"用户问题：{user_message}\n\n专家回答：{expert_response.get('answer', '')}",  # 将专家回答作为输入
-                        context=thinking_context,
-                        memory=history,  # 传入历史记录
-                        tool_results=None,  # 专家已经处理了数据查询，不需要tool_results
-                    )
-                else:
-                    # 如果没有专家回答，使用数据查询结果（如果有）
-                    analysis, stats = await thinking_agent.think(
-                        user_input=processed_query,  # 使用重写后的问题
-                        context=thinking_context,
-                        memory=history,  # 传入历史记录
-                        tool_results=tool_results if tool_results else None,
-                    )
-                
-                # 5. 保存 AI 回答到历史记录
-                save_message(
-                    session_id=session_id,
-                    role="assistant",
-                    message=analysis,
-                    intent=intent,
-                    metadata={
+                    # 5. 使用 ThinkingAgent 生成最终回答（基于专家回答或数据查询结果）
+                    thinking_context = {
+                        "intent": intent,
                         "route_decision": route_decision,
-                        "data_used": bool(tool_results),
-                    },
-                )
-                
-                # 6. 发送响应
-                response = {
-                    "status": "success",
-                    "response": analysis,
-                    "intent": intent,
-                    "route_decision": route_decision,
-                    "data_used": tool_results if tool_results else None,
-                    "session_id": session_id,
-                    "history_count": len(history) + 2,  # 包含刚保存的两条消息
-                }
-                
-                await websocket.send_text(json.dumps(response, ensure_ascii=False))
+                        "original_query": user_message,  # 保留原始问题供参考
+                        **context,
+                    }
+                    
+                    # 如果专家咨询成功，使用专家的回答作为主要输入
+                    if expert_response and expert_response.get("success"):
+                        # 专家已经完成了数据查询和聚合，直接使用专家的回答
+                        thinking_context["expert_answer"] = expert_response.get("answer", "")
+                        thinking_context["expert_confidence"] = expert_response.get("confidence", 0.0)
+                        thinking_context["expert_sources"] = expert_response.get("sources", [])
+                        
+                        # 基于专家的回答生成最终回答
+                        analysis, stats = await thinking_agent.think(
+                            user_input=f"用户问题：{user_message}\n\n专家回答：{expert_response.get('answer', '')}",  # 将专家回答作为输入
+                            context=thinking_context,
+                            memory=history,  # 传入历史记录
+                            tool_results=None,  # 专家已经处理了数据查询，不需要tool_results
+                        )
+                    else:
+                        # 如果没有专家回答，使用数据查询结果（如果有）
+                        analysis, stats = await thinking_agent.think(
+                            user_input=processed_query,  # 使用重写后的问题
+                            context=thinking_context,
+                            memory=history,  # 传入历史记录
+                            tool_results=tool_results if tool_results else None,
+                        )
+                    
+                    # 6. 保存 AI 回答到历史记录
+                    save_message(
+                        session_id=session_id,
+                        role="assistant",
+                        message=analysis,
+                        intent=intent,
+                        metadata={
+                            "route_decision": route_decision,
+                            "data_used": bool(tool_results),
+                            "expert_consulted": bool(expert_response and expert_response.get("success")),
+                        },
+                    )
+                    
+                    # 7. 发送响应（使用标准消息格式）
+                    # 确保 response 字段不为 None，避免前端 marked.js 报错
+                    response_text = str(analysis) if analysis is not None else ""
+                    
+                    response = {
+                        "type": MsgType.NEW_CHAT_MESSAGE,
+                        "data": {
+                            "status": "success",
+                            "response": response_text,  # 确保是字符串，不为 None
+                            "intent": intent if intent else "",
+                            "route_decision": route_decision if route_decision else {},
+                            "data_used": tool_results if tool_results else None,
+                            "expert_response": expert_response if expert_response else None,
+                            "session_id": session_id or "",
+                            "history_count": len(history) + 2,
+                        }
+                    }
+                    await websocket.send_text(json.dumps(response, ensure_ascii=False))
                 
             except json.JSONDecodeError:
                 await websocket.send_text(json.dumps({
