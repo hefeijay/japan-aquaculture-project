@@ -1,0 +1,485 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "日本陆上养殖生产管理AI助手API",
+    "description": "日本陆上养殖生产管理AI助手服务端API文档\n\n本API提供文件上传和转发功能，支持单文件和多文件上传。\n文件上传后，如果配置了转发地址（FILE_FORWARD_URL），会自动转发到指定地址。\n",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5002",
+      "description": "本地开发服务器"
+    },
+    {
+      "url": "http://0.0.0.0:5002",
+      "description": "生产服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "文件上传",
+      "description": "文件上传和转发相关接口"
+    }
+  ],
+  "paths": {
+    "/api/upload": {
+      "post": {
+        "tags": [
+          "文件上传"
+        ],
+        "summary": "单文件上传",
+        "description": "接收前端发送的单个文件，并可选地转发到配置的地址。\n\n**功能特性：**\n- 支持多种文件类型（txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx）\n- 自动文件名安全处理\n- 如果配置了 FILE_FORWARD_URL，自动转发文件\n- 返回详细的上传和转发结果\n\n**转发配置：**\n- 在环境变量或配置文件中设置 `FILE_FORWARD_URL`\n- 设置为 `none` 或不设置则禁用转发\n- 转发时会包含原始文件和其他表单数据\n",
+        "operationId": "uploadFile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "要上传的文件，字段名必须为 'file'。\n如果文件名为 'blob' 或没有扩展名，系统会尝试：\n1. 从 Content-Type 推断文件类型\n2. 从文件内容（magic bytes）检测文件类型\n3. 从表单参数 file_type/extension/file_extension 获取文件类型\n"
+                  },
+                  "file_type": {
+                    "type": "string",
+                    "description": "文件类型/扩展名（可选）。当文件名为 'blob' 或无法推断类型时使用。\n例如: 'pdf', 'jpg', 'png' 等。不要包含点号。\n"
+                  },
+                  "extension": {
+                    "type": "string",
+                    "description": "file_type 的别名（可选）"
+                  },
+                  "file_extension": {
+                    "type": "string",
+                    "description": "file_type 的别名（可选）"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "文件描述（可选）"
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "文件分类（可选）"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                },
+                "examples": {
+                  "success_without_forward": {
+                    "summary": "成功（未配置转发）",
+                    "value": {
+                      "success": true,
+                      "filename": "example.txt",
+                      "size": 1024,
+                      "timestamp": 1704067200000,
+                      "forward": {
+                        "enabled": false,
+                        "url": null,
+                        "success": null,
+                        "error": null
+                      }
+                    }
+                  },
+                  "success_with_forward": {
+                    "summary": "成功（已转发）",
+                    "value": {
+                      "success": true,
+                      "filename": "example.txt",
+                      "size": 1024,
+                      "timestamp": 1704067200000,
+                      "forward": {
+                        "enabled": true,
+                        "url": "http://example.com/api/upload",
+                        "success": true,
+                        "status_code": 200,
+                        "response": {
+                          "message": "File uploaded successfully"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "no_file": {
+                    "summary": "未找到文件",
+                    "value": {
+                      "success": false,
+                      "error": "未找到文件，请使用 'file' 作为文件字段名",
+                      "timestamp": 1704067200000
+                    }
+                  },
+                  "empty_filename": {
+                    "summary": "文件名为空",
+                    "value": {
+                      "success": false,
+                      "error": "文件名为空",
+                      "timestamp": 1704067200000
+                    }
+                  },
+                  "invalid_type": {
+                    "summary": "不支持的文件类型",
+                    "value": {
+                      "success": false,
+                      "error": "不支持的文件类型，允许的类型: txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx",
+                      "timestamp": 1704067200000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "error": "服务器内部错误: Connection timeout",
+                  "timestamp": 1704067200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upload/multiple": {
+      "post": {
+        "tags": [
+          "文件上传"
+        ],
+        "summary": "多文件上传",
+        "description": "接收前端发送的多个文件，并可选地转发到配置的地址。\n\n**功能特性：**\n- 支持批量上传多个文件\n- 每个文件独立处理，互不影响\n- 支持多种文件类型（txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx）\n- 如果配置了 FILE_FORWARD_URL，每个文件都会转发\n- 返回所有文件的上传和转发结果\n\n**转发配置：**\n- 在环境变量或配置文件中设置 `FILE_FORWARD_URL`\n- 设置为 `none` 或不设置则禁用转发\n",
+        "operationId": "uploadMultipleFiles",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files[]"
+                ],
+                "properties": {
+                  "files[]": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "要上传的文件列表，字段名必须为 'files[]'。\n如果文件名为 'blob' 或没有扩展名，系统会尝试自动推断文件类型。\n"
+                  },
+                  "file_type": {
+                    "type": "string",
+                    "description": "文件类型/扩展名（可选）。当文件名为 'blob' 或无法推断类型时使用。\n注意：多文件上传时，此参数会应用到所有文件。\n"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "文件描述（可选）"
+                  }
+                }
+              },
+              "encoding": {
+                "files[]": {
+                  "contentType": "application/octet-stream"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleUploadResponse"
+                },
+                "example": {
+                  "success": true,
+                  "files": [
+                    {
+                      "filename": "file1.txt",
+                      "size": 1024,
+                      "success": true,
+                      "forward": {
+                        "enabled": false,
+                        "url": null,
+                        "success": null,
+                        "error": null
+                      }
+                    },
+                    {
+                      "filename": "file2.pdf",
+                      "size": 2048,
+                      "success": true,
+                      "forward": {
+                        "enabled": true,
+                        "url": "http://example.com/api/upload",
+                        "success": true,
+                        "status_code": 200
+                      }
+                    }
+                  ],
+                  "count": 2,
+                  "timestamp": 1704067200000
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "no_files": {
+                    "summary": "未找到文件",
+                    "value": {
+                      "success": false,
+                      "error": "未找到文件，请使用 'files[]' 作为文件字段名",
+                      "timestamp": 1704067200000
+                    }
+                  },
+                  "empty_files": {
+                    "summary": "文件列表为空",
+                    "value": {
+                      "success": false,
+                      "error": "文件列表为空",
+                      "timestamp": 1704067200000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "error": "服务器内部错误: Connection timeout",
+                  "timestamp": 1704067200000
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UploadResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "filename",
+          "size",
+          "timestamp",
+          "forward"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "上传是否成功",
+            "example": true
+          },
+          "filename": {
+            "type": "string",
+            "description": "处理后的安全文件名",
+            "example": "example.txt"
+          },
+          "size": {
+            "type": "integer",
+            "description": "文件大小（字节）",
+            "example": 1024
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "时间戳（毫秒）",
+            "example": 1704067200000
+          },
+          "forward": {
+            "$ref": "#/components/schemas/ForwardInfo"
+          }
+        }
+      },
+      "MultipleUploadResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "files",
+          "count",
+          "timestamp"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "整体操作是否成功",
+            "example": true
+          },
+          "files": {
+            "type": "array",
+            "description": "文件上传结果列表",
+            "items": {
+              "type": "object",
+              "required": [
+                "filename",
+                "size",
+                "success",
+                "forward"
+              ],
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "description": "处理后的安全文件名",
+                  "example": "example.txt"
+                },
+                "size": {
+                  "type": "integer",
+                  "description": "文件大小（字节）",
+                  "example": 1024
+                },
+                "success": {
+                  "type": "boolean",
+                  "description": "该文件上传是否成功",
+                  "example": true
+                },
+                "error": {
+                  "type": "string",
+                  "description": "错误信息（如果失败）",
+                  "example": null
+                },
+                "forward": {
+                  "$ref": "#/components/schemas/ForwardInfo"
+                }
+              }
+            }
+          },
+          "count": {
+            "type": "integer",
+            "description": "成功处理的文件数量",
+            "example": 2
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "时间戳（毫秒）",
+            "example": 1704067200000
+          }
+        }
+      },
+      "ForwardInfo": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "url",
+          "success",
+          "error"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "是否启用了转发功能",
+            "example": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "description": "转发目标地址",
+            "example": "http://example.com/api/upload"
+          },
+          "success": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "转发是否成功",
+            "example": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "转发错误信息（如果失败）",
+            "example": null
+          },
+          "status_code": {
+            "type": "integer",
+            "description": "转发请求的HTTP状态码",
+            "example": 200
+          },
+          "response": {
+            "type": "object",
+            "description": "转发目标服务器的响应内容",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "error",
+          "timestamp"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "操作是否成功（始终为false）",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "错误信息",
+            "example": "未找到文件，请使用 'file' 作为文件字段名"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "时间戳（毫秒）",
+            "example": 1704067200000
+          }
+        }
+      }
+    }
+  }
+}

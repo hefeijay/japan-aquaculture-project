@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Flask应用工厂
+负责创建和配置Flask应用实例
+"""
+
+from flask import Flask
+from flask_cors import CORS
+import logging
+import sys
+import os
+
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from japan_server.config.settings import Config
+from japan_server.routes.api_routes import api_bp
+from japan_server.routes.main_routes import main_bp
+
+# 导入数据库模型（统一包路径，避免产生多个 SQLAlchemy 实例）
+from japan_server.db_models import db
+
+
+def create_app(config_class=Config):
+    """
+    创建Flask应用实例
+    
+    Args:
+        config_class: 配置类，默认使用Config
+        
+    Returns:
+        配置好的Flask应用实例
+    """
+    # 创建Flask应用
+    app = Flask(__name__)
+    
+    # 加载配置
+    app.config.from_object(config_class)
+    
+    # 添加数据库配置（统一使用 Config，可通过环境变量覆盖）
+    app.config['SQLALCHEMY_DATABASE_URI'] = Config.SQLALCHEMY_DATABASE_URI
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # 初始化数据库
+    db.init_app(app)
+    
+    # 配置CORS
+    CORS(app)  # 允许跨域请求
+    
+    # 配置日志
+    logging.basicConfig(level=getattr(logging, config_class.LOG_LEVEL))
+    logger = logging.getLogger(__name__)
+    logger.info("Flask应用初始化完成")
+    
+    # 注册蓝图
+    from .routes.ai_decision_routes import ai_decision_bp
+    from .routes.message_queue_routes import message_queue_bp
+    from .routes.data_collection_routes import data_collection_bp
+    from .routes.file_upload_routes import file_upload_bp
+    
+    app.register_blueprint(main_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(ai_decision_bp)
+    app.register_blueprint(message_queue_bp)
+    app.register_blueprint(data_collection_bp)
+    app.register_blueprint(file_upload_bp)
+    
+    logger.info("所有蓝图注册完成")
+    
+    return app
+
+
+def print_startup_info():
+    """
+    打印启动信息
+    """
+    print("=" * 60)
+    print("🤖 日本陆上养殖生产管理AI助手服务端启动中...")
+    print(f"📡 API地址: http://localhost:{Config.PORT}")
+    print(f"🔗 AI决策接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['ai_decisions']}")
+    print(f"🌡️ 传感器数据接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['sensors_realtime']}")
+    print(f"🔧 设备状态接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['devices_status']}")
+    print(f"📍 地理位置接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['location_data']}")
+    print(f"📹 摄像头状态接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['camera_status']}")
+    print(f"📸 摄像头图片接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['camera_image']}")
+    print(f"🏥 摄像头健康检查: http://localhost:{Config.PORT}{Config.ENDPOINTS['camera_health']}")
+    print(f"💚 健康检查: http://localhost:{Config.PORT}{Config.ENDPOINTS['health']}")
+    print(f"📤 文件上传接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['file_upload']}")
+    print(f"📤 多文件上传接口: http://localhost:{Config.PORT}{Config.ENDPOINTS['file_upload_multiple']}")
+    if Config.FILE_FORWARD_URL and Config.FILE_FORWARD_URL.lower() != 'none':
+        print(f"🔄 文件转发地址: {Config.FILE_FORWARD_URL}")
+    else:
+        print(f"🔄 文件转发: 未启用（FILE_FORWARD_URL=none）")
+    print("=" * 60)

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/srv/japan_server/main.py", line 8, in <module>
+    from japan_server.app_factory import create_app, print_startup_info
+ModuleNotFoundError: No module named 'japan_server.app_factory'

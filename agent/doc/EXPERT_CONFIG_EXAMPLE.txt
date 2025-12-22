@@ -1,0 +1,14 @@
+# 外部专家服务配置示例
+# 在 .env 文件中添加以下配置
+
+# 专家API基础地址（必需，默认: http://localhost:5003）
+EXPERT_API_BASE_URL=http://localhost:5003
+
+# 专家API密钥（可选，如果API需要认证）
+EXPERT_API_KEY=your_api_key_here
+
+# 专家API超时时间（秒，默认30）
+EXPERT_API_TIMEOUT=30
+
+# 是否启用专家咨询（默认true）
+ENABLE_EXPERT_CONSULTATION=true

@@ -1,0 +1,727 @@
+openapi: 3.0.3
+info:
+  title: 日本陆上养殖生产管理AI助手API
+  description: |
+    日本陆上养殖生产管理AI助手服务端API文档
+    
+    本API提供文件上传和转发功能，支持单文件和多文件上传。
+    文件上传后，如果配置了转发地址（FILE_FORWARD_URL），会自动转发到指定地址。
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:5002
+    description: 本地开发服务器
+  - url: http://0.0.0.0:5002
+    description: 生产服务器
+
+tags:
+  - name: 文件上传
+    description: 文件上传和转发相关接口
+  - name: 池塘管理
+    description: 池塘信息查询和更新相关接口
+
+paths:
+  /api/v1/upload:
+    post:
+      tags:
+        - 文件上传
+      summary: 单文件上传
+      description: |
+        接收前端发送的单个文件，并可选地转发到配置的地址。
+        
+        **功能特性：**
+        - 支持多种文件类型（txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx）
+        - 自动文件名安全处理
+        - 如果配置了 FILE_FORWARD_URL，自动转发文件
+        - 返回详细的上传和转发结果
+        
+        **转发配置：**
+        - 在环境变量或配置文件中设置 `FILE_FORWARD_URL`
+        - 设置为 `none` 或不设置则禁用转发
+        - 转发时会包含原始文件和其他表单数据
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    要上传的文件，字段名必须为 'file'。
+                    如果文件名为 'blob' 或没有扩展名，系统会尝试：
+                    1. 从 Content-Type 推断文件类型
+                    2. 从文件内容（magic bytes）检测文件类型
+                    3. 从表单参数 file_type/extension/file_extension 获取文件类型
+                file_type:
+                  type: string
+                  description: |
+                    文件类型/扩展名（可选）。当文件名为 'blob' 或无法推断类型时使用。
+                    例如: 'pdf', 'jpg', 'png' 等。不要包含点号。
+                extension:
+                  type: string
+                  description: file_type 的别名（可选）
+                file_extension:
+                  type: string
+                  description: file_type 的别名（可选）
+                description:
+                  type: string
+                  description: 文件描述（可选）
+                category:
+                  type: string
+                  description: 文件分类（可选）
+            encoding:
+              file:
+                contentType: application/octet-stream
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              examples:
+                success_without_forward:
+                  summary: 成功（未配置转发）
+                  value:
+                    code: 200
+                    message: "文件上传成功"
+                    data:
+                      filename: "example.txt"
+                      size: 1024
+                      forward:
+                        enabled: false
+                        url: null
+                        success: null
+                        error: null
+                success_with_forward:
+                  summary: 成功（已转发）
+                  value:
+                    code: 200
+                    message: "文件上传成功"
+                    data:
+                      filename: "example.txt"
+                      size: 1024
+                      forward:
+                        enabled: true
+                        url: "http://example.com/api/upload"
+                        success: true
+                        status_code: 200
+                        response:
+                          message: "File uploaded successfully"
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_file:
+                  summary: 未找到文件
+                  value:
+                    code: 400
+                    message: "未找到文件，请使用 'file' 作为文件字段名"
+                    data: null
+                empty_filename:
+                  summary: 文件名为空
+                  value:
+                    code: 400
+                    message: "文件名为空"
+                    data: null
+                invalid_type:
+                  summary: 不支持的文件类型
+                  value:
+                    code: 400
+                    message: "不支持的文件类型，允许的类型: txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx"
+                    data:
+                      filename: "example.xxx"
+                      detected_extension: "xxx"
+                      content_type: "application/octet-stream"
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "服务器内部错误: Connection timeout"
+                data: null
+
+  /api/v1/upload/multiple:
+    post:
+      tags:
+        - 文件上传
+      summary: 多文件上传
+      description: |
+        接收前端发送的多个文件，并可选地转发到配置的地址。
+        
+        **功能特性：**
+        - 支持批量上传多个文件
+        - 每个文件独立处理，互不影响
+        - 支持多种文件类型（txt, pdf, png, jpg, jpeg, gif, zip, json, csv, xlsx, doc, docx）
+        - 如果配置了 FILE_FORWARD_URL，每个文件都会转发
+        - 返回所有文件的上传和转发结果
+        
+        **转发配置：**
+        - 在环境变量或配置文件中设置 `FILE_FORWARD_URL`
+        - 设置为 `none` 或不设置则禁用转发
+      operationId: uploadMultipleFiles
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files[]
+              properties:
+                'files[]':
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: |
+                    要上传的文件列表，字段名必须为 'files[]'。
+                    如果文件名为 'blob' 或没有扩展名，系统会尝试自动推断文件类型。
+                file_type:
+                  type: string
+                  description: |
+                    文件类型/扩展名（可选）。当文件名为 'blob' 或无法推断类型时使用。
+                    注意：多文件上传时，此参数会应用到所有文件。
+                description:
+                  type: string
+                  description: 文件描述（可选）
+            encoding:
+              'files[]':
+                contentType: application/octet-stream
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MultipleUploadResponse'
+              example:
+                code: 200
+                message: "文件上传成功"
+                data:
+                  files:
+                    - filename: "file1.txt"
+                      size: 1024
+                      forward:
+                        enabled: false
+                        url: null
+                        success: null
+                        error: null
+                    - filename: "file2.pdf"
+                      size: 2048
+                      forward:
+                        enabled: true
+                        url: "http://example.com/api/upload"
+                        success: true
+                        status_code: 200
+                  count: 2
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_files:
+                  summary: 未找到文件
+                  value:
+                    code: 400
+                    message: "未找到文件，请使用 'files[]' 作为文件字段名"
+                    data: null
+                empty_files:
+                  summary: 文件列表为空
+                  value:
+                    code: 400
+                    message: "文件列表为空"
+                    data: null
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "服务器内部错误: Connection timeout"
+                data: null
+
+  /api/update_pond_detail:
+    post:
+      tags:
+        - 池塘管理
+      summary: 更新池塘详细信息
+      description: |
+        更新池塘的详细信息，支持部分或全部更新。
+        
+        **功能特性：**
+        - 支持部分更新，只需提供要更新的字段
+        - 更新池塘基本信息（面积、数量、物种类型）
+        - 插入新的传感器读数记录
+        - 更新环境信息（位置等）
+        - 记录统计图像路径
+        
+        **数据存储说明：**
+        - `pond.area` → 更新到 `ponds.area`
+        - `pond.species.number` → 更新到 `ponds.count`
+        - `pond.species.type` → 更新到 `batches.species`（当前活跃批次）
+        - `sensor.*` → 插入新记录到 `sensor_readings` 表
+        - `environment.region` → 更新到 `ponds.location`
+      operationId: updatePondDetail
+      parameters:
+        - name: pond_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 池塘ID
+          example: "1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PondDetailUpdateRequest'
+            examples:
+              partial_update:
+                summary: 部分更新示例
+                value:
+                  pond:
+                    area: 25.5
+                    species:
+                      number: 4000
+                  sensor:
+                    water_temperature: 28.5
+                    pH: 7.2
+              full_update:
+                summary: 完整更新示例
+                value:
+                  pond:
+                    area: 30.0
+                    species:
+                      type: "shrimp"
+                      number: 5000
+                  sensor:
+                    water_temperature: 31.7
+                    Dissolved_oxygen: 4.80043
+                    pH: 7.4
+                    liquid_level: 0.817
+                    Turbidity: 2.3
+                  environment:
+                    time: 1753415429
+                    region: "筑波"
+                    weather: "sunny"
+                    temperature: 35
+                  stats_image:
+                    length: "http://8.216.33.92:5000/static/pond_images/length/live_shrimp_size_distribution.png"
+                    weight: "http://8.216.33.92:5000/static/pond_images/weight/live_shrimp_weight_distribution.png"
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PondDetailUpdateResponse'
+              example:
+                code: 200
+                message: "成功更新 8 个字段"
+                data:
+                  pond_name: "一号"
+                  pond_id: "1"
+                  detail:
+                    pond:
+                      area: 30.0
+                      species:
+                        type: "shrimp"
+                        number: 5000
+                    sensor:
+                      water_temperature: 31.7
+                      pH: 7.4
+                      Dissolved_oxygen: 4.80043
+                      liquid_level: 0.817
+                      Turbidity: 2.3
+                    environment:
+                      time: 1753415429
+                      region: "筑波"
+                      weather: "sunny"
+                      temperature: 31.7
+                    stats_image:
+                      length: "http://8.216.33.92:5000/static/pond_images/length/live_shrimp_size_distribution_1.png"
+                      weight: "http://8.216.33.92:5000/static/pond_images/weight/live_shrimp_weight_distribution_1.png"
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PondDetailErrorResponse'
+              examples:
+                missing_pond_id:
+                  summary: 缺少池塘ID
+                  value:
+                    code: 400
+                    message: "缺少参数 pond_id"
+                    data: null
+                missing_data:
+                  summary: 缺少更新数据
+                  value:
+                    code: 400
+                    message: "缺少更新数据"
+                    data: null
+                pond_not_found:
+                  summary: 池塘不存在
+                  value:
+                    code: 404
+                    message: "池塘 999 不存在"
+                    data: null
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PondDetailErrorResponse'
+              example:
+                code: 500
+                message: "服务器内部错误: Database connection failed"
+                data: null
+
+components:
+  schemas:
+    UploadResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: integer
+          description: 响应状态码
+          example: 200
+        message:
+          type: string
+          description: 响应消息
+          example: "文件上传成功"
+        data:
+          type: object
+          properties:
+            filename:
+              type: string
+              description: 处理后的安全文件名
+              example: "example.txt"
+            size:
+              type: integer
+              description: 文件大小（字节）
+              example: 1024
+            forward:
+              $ref: '#/components/schemas/ForwardInfo'
+
+    MultipleUploadResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: integer
+          description: 响应状态码
+          example: 200
+        message:
+          type: string
+          description: 响应消息
+          example: "文件上传成功"
+        data:
+          type: object
+          properties:
+            files:
+              type: array
+              description: 文件上传结果列表
+              items:
+                type: object
+                required:
+                  - filename
+                  - size
+                  - forward
+                properties:
+                  filename:
+                    type: string
+                    description: 处理后的安全文件名
+                    example: "example.txt"
+                  size:
+                    type: integer
+                    description: 文件大小（字节）
+                    example: 1024
+                  error:
+                    type: string
+                    description: 错误信息（如果失败）
+                    example: null
+                  forward:
+                    $ref: '#/components/schemas/ForwardInfo'
+            count:
+              type: integer
+              description: 成功处理的文件数量
+              example: 2
+
+    ForwardInfo:
+      type: object
+      required:
+        - enabled
+        - url
+        - success
+        - error
+      properties:
+        enabled:
+          type: boolean
+          description: 是否启用了转发功能
+          example: true
+        url:
+          type: string
+          nullable: true
+          description: 转发目标地址
+          example: "http://example.com/api/upload"
+        success:
+          type: boolean
+          nullable: true
+          description: 转发是否成功
+          example: true
+        error:
+          type: string
+          nullable: true
+          description: 转发错误信息（如果失败）
+          example: null
+        status_code:
+          type: integer
+          description: 转发请求的HTTP状态码
+          example: 200
+        response:
+          type: object
+          description: 转发目标服务器的响应内容
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: integer
+          description: 错误状态码
+          example: 400
+        message:
+          type: string
+          description: 错误消息
+          example: "未找到文件，请使用 'file' 作为文件字段名"
+        data:
+          type: object
+          nullable: true
+          description: 错误数据（可能包含额外信息）
+          example: null
+
+    PondDetailUpdateRequest:
+      type: object
+      description: 池塘详情更新请求数据
+      properties:
+        pond:
+          type: object
+          description: 池塘基本信息
+          properties:
+            area:
+              type: number
+              format: float
+              description: 养殖池实际面积（平方米）
+              example: 30.0
+            species:
+              type: object
+              description: 物种信息
+              properties:
+                type:
+                  type: string
+                  description: 物种类型
+                  example: "shrimp"
+                number:
+                  type: integer
+                  description: 实际统计的数量（尾数）
+                  example: 5000
+        sensor:
+          type: object
+          description: 传感器数据（可选，支持部分更新）
+          properties:
+            water_temperature:
+              type: number
+              format: float
+              description: 水温（°C）
+              example: 31.7
+            pH:
+              type: number
+              format: float
+              description: pH值
+              example: 7.4
+            Dissolved_oxygen:
+              type: number
+              format: float
+              description: 溶解氧（mg/L）
+              example: 4.80043
+            liquid_level:
+              type: number
+              format: float
+              description: 液位（米）
+              example: 0.817
+            Turbidity:
+              type: number
+              format: float
+              description: 浊度（NTU）
+              example: 2.3
+        environment:
+          type: object
+          description: 环境数据（可选）
+          properties:
+            time:
+              type: integer
+              description: 时间戳（秒）
+              example: 1753415429
+            region:
+              type: string
+              description: 地区
+              example: "筑波"
+            weather:
+              type: string
+              description: 天气
+              example: "sunny"
+            temperature:
+              type: number
+              format: float
+              description: 环境温度（°C）
+              example: 35
+        stats_image:
+          type: object
+          description: 统计图像路径（可选）
+          properties:
+            length:
+              type: string
+              format: uri
+              description: 长度分布图URL
+              example: "http://8.216.33.92:5000/static/pond_images/length/live_shrimp_size_distribution.png"
+            weight:
+              type: string
+              format: uri
+              description: 重量分布图URL
+              example: "http://8.216.33.92:5000/static/pond_images/weight/live_shrimp_weight_distribution.png"
+
+    PondDetailUpdateResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: integer
+          description: 响应状态码
+          example: 200
+        message:
+          type: string
+          description: 响应消息
+          example: "成功更新 8 个字段"
+        data:
+          $ref: '#/components/schemas/PondDetailData'
+
+    PondDetailData:
+      type: object
+      description: 池塘详情数据
+      properties:
+        pond_name:
+          type: string
+          description: 池塘名称
+          example: "一号"
+        pond_id:
+          type: string
+          description: 池塘ID
+          example: "1"
+        detail:
+          type: object
+          description: 详细信息
+          properties:
+            pond:
+              type: object
+              properties:
+                area:
+                  type: number
+                  format: float
+                  example: 30.0
+                species:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: "shrimp"
+                    number:
+                      type: integer
+                      example: 5000
+            sensor:
+              type: object
+              description: 传感器数据
+              additionalProperties:
+                type: number
+                format: float
+            environment:
+              type: object
+              properties:
+                time:
+                  type: integer
+                region:
+                  type: string
+                weather:
+                  type: string
+                temperature:
+                  type: number
+                  format: float
+            stats_image:
+              type: object
+              properties:
+                length:
+                  type: string
+                  format: uri
+                weight:
+                  type: string
+                  format: uri
+
+    PondDetailErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: integer
+          description: 错误状态码
+          example: 400
+        message:
+          type: string
+          description: 错误消息
+          example: "缺少参数 pond_id"
+        data:
+          type: object
+          nullable: true
+          description: 错误数据（通常为null）
+          example: null
+
+
+
+
