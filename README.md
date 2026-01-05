@@ -168,9 +168,10 @@ japan-aquaculture-project/
 
 ### 前置要求
 
-- Python 3.8+
+- Python 3.10+
 - MySQL 8.0+
 - Git
+- [uv](https://github.com/astral-sh/uv) (Python 包管理器，推荐使用)
 
 ### 1. 克隆项目
 
@@ -179,28 +180,23 @@ git clone https://github.com/1shadow1/japan-aquaculture-project.git
 cd japan-aquaculture-project
 ```
 
-### 2. 数据库初始化
+### 2. 安装依赖和初始化数据库
 
 ```bash
-# 使用自动化脚本（推荐）
-./scripts/init_database.sh
+# 使用 uv 安装项目依赖（推荐）
+uv sync
 
-# 或手动执行
-mysql -u root -p < schema/mysql_aquaculture_ddl.sql
+# 初始化数据库（使用 create_app 中的 db）
+uv run python scripts/init_database.py
+
 ```
+
+**注意**: 数据库初始化脚本会使用 `backend/app_factory.py` 中的 `create_app` 和 `db` 来创建所有表。请确保在运行前已配置好数据库连接（通过环境变量或配置文件）。
 
 ### 3. 配置 Agent 服务
 
 ```bash
 cd agent
-
-# 创建虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# 或 .venv\Scripts\activate  # Windows
-
-# 安装依赖
-pip install -r requirements.txt
 
 # 创建 .env 文件
 cat > .env << EOF
@@ -226,19 +222,17 @@ EXPERT_API_BASE_URL=http://localhost:5003
 ENABLE_EXPERT_CONSULTATION=true
 EOF
 
-# 启动服务
+# 启动服务（使用 uv）
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 或使用启动脚本（如果脚本已更新为使用 uv）
 bash start.sh
-# 或
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 4. 配置 Backend 服务
 
 ```bash
 cd backend
-
-# 安装依赖（如果使用虚拟环境）
-pip install flask flask-sqlalchemy pymysql python-dotenv
 
 # 创建 .env 文件
 cat > .env << EOF
@@ -255,10 +249,11 @@ PORT=5002
 DEBUG=false
 EOF
 
-# 启动服务
-python main.py
-# 或
-python -m japan_server.main
+# 启动服务（使用 uv）
+uv run python main.py
+
+# 或使用 uv async（如果使用异步环境）
+uv async run python main.py
 ```
 
 ### 5. 验证服务
