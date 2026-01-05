@@ -10,8 +10,8 @@ from datetime import datetime
 import logging
 import time
 
-from japan_server.app_factory import create_app
-from japan_server.db_models import CameraStatus, CameraImage, CameraHealth, db
+from app_factory import create_app
+from db_models import CameraStatus, CameraImage, CameraHealth, db
 
 logger = logging.getLogger(__name__)
 

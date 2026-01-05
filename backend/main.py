@@ -5,9 +5,9 @@
 使用模块化架构重构的新版本
 """
 
-from japan_server.app_factory import create_app, print_startup_info
-from japan_server.config.settings import Config 
-from japan_server.services.aggregator_service import aggregator_service
+from app_factory import create_app, print_startup_info
+from config.settings import Config 
+from services.aggregator_service import aggregator_service
 
 
 def main():

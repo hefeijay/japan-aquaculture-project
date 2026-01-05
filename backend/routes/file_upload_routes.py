@@ -12,7 +12,7 @@ import requests
 from werkzeug.utils import secure_filename
 import os
 
-from japan_server.config.settings import Config
+from config.settings import Config
 
 # 创建蓝图
 file_upload_bp = Blueprint('file_upload', __name__, url_prefix='/api/v1')

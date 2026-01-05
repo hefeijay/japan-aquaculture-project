@@ -14,12 +14,12 @@ import os
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
 
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.sensor_reading import SensorReading
-from japan_server.db_models.camera import CameraImage
-from japan_server.db_models.feeder_log import FeederLog
-from japan_server.db_models.operation_log import OperationLog
-from japan_server.services.data_cleaning_service import DataCleaningService
+from db_models.db_session import db_session_factory
+from db_models.sensor_reading import SensorReading
+from db_models.camera import CameraImage
+from db_models.feeder_log import FeederLog
+from db_models.operation_log import OperationLog
+from services.data_cleaning_service import DataCleaningService
 
 # 创建蓝图
 data_collection_bp = Blueprint('data_collection', __name__, url_prefix='/api/data')
@@ -72,7 +72,7 @@ def ensure_batch_exists(session, batch_id: Optional[int], pool_id: Optional[str]
     if batch_id is None:
         return None
     
-    from japan_server.db_models.batch import Batch
+    from db_models.batch import Batch
     from datetime import date
     
     batch = session.query(Batch).filter(Batch.batch_id == batch_id).first()
@@ -205,7 +205,7 @@ def receive_sensor_data():
         # 保存到数据库
         with db_session_factory() as session:
             # 检查并确保传感器记录存在
-            from japan_server.db_models.sensor import Sensor
+            from db_models.sensor import Sensor
             
             sensor = session.query(Sensor).filter(Sensor.id == sensor_id).first()
             if not sensor:
@@ -432,7 +432,7 @@ def receive_feeder_data():
         # 保存到数据库
         with db_session_factory() as session:
             # 检查并确保设备记录存在
-            from japan_server.db_models.device import Device
+            from db_models.device import Device
             
             # 首先尝试通过 id 查找设备
             device = session.query(Device).filter(Device.id == feeder_id).first()
@@ -951,7 +951,7 @@ def receive_shrimp_stats_data():
             ensure_batch_exists(db_session_factory(), batch_id, pond_id)
         
         # 创建 ShrimpStats 记录
-        from japan_server.db_models.shrimp_stats import ShrimpStats
+        from db_models.shrimp_stats import ShrimpStats
         from sqlalchemy import text
         
         with db_session_factory() as session:
@@ -1244,7 +1244,7 @@ def receive_batch_images():
         
         # 发送统计结果到数据库
         try:
-            from japan_server.db_models.shrimp_stats import ShrimpStats
+            from db_models.shrimp_stats import ShrimpStats
             from datetime import datetime
             import uuid as uuid_lib
             

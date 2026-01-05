@@ -15,8 +15,8 @@ from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, or_, func
 
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.message_queue import MessageQueue
+from db_models.db_session import db_session_factory
+from db_models.message_queue import MessageQueue
 
 logger = logging.getLogger(__name__)
 

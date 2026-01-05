@@ -10,10 +10,10 @@ from datetime import datetime, timedelta
 import logging
 from sqlalchemy import func, or_
 
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.sensor import Sensor
-from japan_server.db_models.sensor_reading import SensorReading
-from japan_server.db_models.sensor_type import SensorType
+from db_models.db_session import db_session_factory
+from db_models.sensor import Sensor
+from db_models.sensor_reading import SensorReading
+from db_models.sensor_type import SensorType
 
 logger = logging.getLogger(__name__)
 

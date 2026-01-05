@@ -8,7 +8,7 @@
 from flask import Blueprint, jsonify
 import time
 
-from japan_server.config.settings import Config
+from config.settings import Config
 
 # 创建蓝图
 main_bp = Blueprint('main', __name__)

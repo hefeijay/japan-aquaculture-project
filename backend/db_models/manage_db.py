@@ -1,5 +1,5 @@
-from japan_server.app_factory import create_app
-from japan_server.db_models import db
+from app_factory import create_app
+from db_models import db
 
 
 def setup_database():

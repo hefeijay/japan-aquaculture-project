@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, or_
 
 # 导入数据库相关模块
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.ai_decision import AIDecision, MessageType, DecisionRule
+from db_models.db_session import db_session_factory
+from db_models.ai_decision import AIDecision, MessageType, DecisionRule
 
 
 class AIDecisionService:

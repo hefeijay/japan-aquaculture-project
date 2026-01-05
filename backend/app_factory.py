@@ -16,9 +16,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from japan_server.config.settings import Config
-from japan_server.routes.api_routes import api_bp
-from japan_server.routes.main_routes import main_bp
+from config.settings import Config
+from routes.api_routes import api_bp
+from routes.main_routes import main_bp
 
 # 导入数据库模型（统一包路径，避免产生多个 SQLAlchemy 实例）
 from japan_server.db_models import db

@@ -18,14 +18,14 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy import and_, func, text
 from sqlalchemy.orm import Session
 
-from japan_server.config.settings import Config
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.sensor_reading import SensorReading
-from japan_server.db_models.sensor import Sensor
-from japan_server.db_models.sensor_type import SensorType
-from japan_server.db_models.message_queue import MessageQueue
-from japan_server.db_models.ai_decision import MessageType as MessageTypeModel
-from japan_server.db_models.shrimp_stats import ShrimpStats
+from config.settings import Config
+from db_models.db_session import db_session_factory
+from db_models.sensor_reading import SensorReading
+from db_models.sensor import Sensor
+from db_models.sensor_type import SensorType
+from db_models.message_queue import MessageQueue
+from db_models.ai_decision import MessageType as MessageTypeModel
+from db_models.shrimp_stats import ShrimpStats
 
 logger = logging.getLogger(__name__)
 

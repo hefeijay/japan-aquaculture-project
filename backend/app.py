@@ -5,7 +5,7 @@
 重构后的简化版本，保持向后兼容性
 """
 
-from japan_server.main import main
+from main import main
 
 if __name__ == '__main__':
     main()

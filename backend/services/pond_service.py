@@ -9,12 +9,12 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 
-from japan_server.db_models.db_session import db_session_factory
-from japan_server.db_models.pond import Pond
-from japan_server.db_models.batch import Batch
-from japan_server.db_models.sensor_reading import SensorReading
-from japan_server.db_models.sensor import Sensor
-from japan_server.db_models.sensor_type import SensorType
+from db_models.db_session import db_session_factory
+from db_models.pond import Pond
+from db_models.batch import Batch
+from db_models.sensor_reading import SensorReading
+from db_models.sensor import Sensor
+from db_models.sensor_type import SensorType
 from sqlalchemy import desc, func, text
 
 logger = logging.getLogger(__name__)

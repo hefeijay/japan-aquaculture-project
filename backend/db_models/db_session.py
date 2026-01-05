@@ -4,7 +4,7 @@ import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from japan_server.config.settings import Config
+from config.settings import Config
 
 logger = logging.getLogger(__name__)
 

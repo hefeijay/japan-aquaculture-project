@@ -9,7 +9,7 @@ from flask import Blueprint, request, jsonify
 from typing import Dict, Any, Optional
 import logging
 
-from japan_server.services.ai_decision_service import AIDecisionService, DecisionRuleEngine
+from services.ai_decision_service import AIDecisionService, DecisionRuleEngine
 
 # 创建蓝图
 ai_decision_bp = Blueprint('ai_decision', __name__, url_prefix='/api/ai-decisions')

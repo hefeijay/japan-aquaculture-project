@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 import logging
 import time
 
-from japan_server.services.message_queue_service import message_queue_service
+from services.message_queue_service import message_queue_service
 
 # 创建蓝图
 message_queue_bp = Blueprint('message_queue', __name__, url_prefix='/api/messages')

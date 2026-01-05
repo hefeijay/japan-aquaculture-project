@@ -13,13 +13,13 @@ from sqlalchemy.exc import ProgrammingError
 
 # 取消模拟数据：移除 DataGeneratorService 的使用
 # CameraService 延迟在端点内部导入，避免外部依赖影响启动
-from japan_server.config.settings import Config, SENSOR_TYPES
-from japan_server.services.sensor_service import SensorService
-from japan_server.services.ai_decision_service import AIDecisionService
-from japan_server.services.pond_service import PondService
-from japan_server.utils.auth import auth_required
-from japan_server.db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument
-from japan_server.db_models.db_session import db_session_factory
+from config.settings import Config, SENSOR_TYPES
+from services.sensor_service import SensorService
+from services.ai_decision_service import AIDecisionService
+from services.pond_service import PondService
+from utils.auth import auth_required
+from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument
+from db_models.db_session import db_session_factory
 
 # 创建蓝图
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -264,7 +264,7 @@ def get_camera_status(camera_id):
     """
     try:
         # 延迟导入，避免外部依赖导致应用无法启动
-        from japan_server.services.camera_service import CameraService
+        from services.camera_service import CameraService
         # 从数据库获取摄像头状态数据
         camera_data = CameraService.get_camera_status(camera_id)
         if camera_data is None:
@@ -302,7 +302,7 @@ def get_camera_image(camera_id):
         JSON格式的摄像头图片数据
     """
     try:
-        from japan_server.services.camera_service import CameraService
+        from services.camera_service import CameraService
         # 从数据库获取摄像头图片数据
         image_data = CameraService.get_camera_image(camera_id)
         if image_data is None:
@@ -340,7 +340,7 @@ def get_camera_health(camera_id):
         JSON格式的摄像头健康状态数据
     """
     try:
-        from japan_server.services.camera_service import CameraService
+        from services.camera_service import CameraService
         # 从数据库获取摄像头健康状态数据
         health_data = CameraService.get_camera_health(camera_id)
         if health_data is None:
