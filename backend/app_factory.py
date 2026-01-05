@@ -6,10 +6,12 @@ Flask应用工厂
 """
 
 from flask import Flask
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import logging
 import sys
 import os
+import json
 
 # 添加项目根目录到Python路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +23,17 @@ from routes.api_routes import api_bp
 from routes.main_routes import main_bp
 
 # 导入数据库模型（统一包路径，避免产生多个 SQLAlchemy 实例）
-from japan_server.db_models import db
+from db_models import db
+
+
+class UnicodeJSONProvider(DefaultJSONProvider):
+    """
+    自定义JSON提供器，确保中文字符不被转义为Unicode序列
+    """
+    def dumps(self, obj, **kwargs):
+        """重写dumps方法，确保ensure_ascii=False"""
+        kwargs.setdefault('ensure_ascii', False)
+        return json.dumps(obj, **kwargs)
 
 
 def create_app(config_class=Config):
@@ -40,6 +52,9 @@ def create_app(config_class=Config):
     # 加载配置
     app.config.from_object(config_class)
     
+    # 配置JSON编码器：使用自定义JSONProvider确保中文字符直接显示，不转义为Unicode
+    app.json = UnicodeJSONProvider(app)
+    
     # 添加数据库配置（统一使用 Config，可通过环境变量覆盖）
     app.config['SQLALCHEMY_DATABASE_URI'] = Config.SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -56,10 +71,10 @@ def create_app(config_class=Config):
     logger.info("Flask应用初始化完成")
     
     # 注册蓝图
-    from .routes.ai_decision_routes import ai_decision_bp
-    from .routes.message_queue_routes import message_queue_bp
-    from .routes.data_collection_routes import data_collection_bp
-    from .routes.file_upload_routes import file_upload_bp
+    from routes.ai_decision_routes import ai_decision_bp
+    from routes.message_queue_routes import message_queue_bp
+    from routes.data_collection_routes import data_collection_bp
+    from routes.file_upload_routes import file_upload_bp
     
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
