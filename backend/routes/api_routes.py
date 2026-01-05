@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime
 import logging
 import time
+import uuid
 from sqlalchemy.exc import ProgrammingError
 
 # 取消模拟数据：移除 DataGeneratorService 的使用
@@ -18,7 +19,7 @@ from services.sensor_service import SensorService
 from services.ai_decision_service import AIDecisionService
 from services.pond_service import PondService
 from utils.auth import auth_required
-from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument
+from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument, Device, DeviceType
 from db_models.db_session import db_session_factory
 
 # 创建蓝图
@@ -773,4 +774,568 @@ def get_knowledge_base_list(user_id, role):
             "code": 500,
             "msg": f"服务器内部错误: {str(e)}",
             "data": []
+        }), 500
+
+#设备管理接口
+@api_bp.route('/get_device_type_list', methods=['GET'])
+def get_device_type_list():
+    """
+    获取设备类型列表
+    
+    Returns:
+        JSON格式的设备类型列表数据
+    """
+    try:        
+        with db_session_factory() as session:
+            device_types = session.query(DeviceType).order_by(DeviceType.id).all()
+            
+            device_type_list = []
+            for dt in device_types:
+                type_info = {
+                    "id": dt.id,
+                    "name": dt.name,
+                    "type_code": dt.type_code,
+                    "description": dt.description,
+                    "created_at": dt.created_at.isoformat() if dt.created_at else None,
+                    "updated_at": dt.updated_at.isoformat() if dt.updated_at else None
+                }
+                device_type_list.append(type_info)
+        
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": device_type_list
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取设备类型列表失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": []
+        }), 500
+
+@api_bp.route('/get_device_list', methods=['GET'])
+def get_device_list():
+    """
+    获取设备列表
+    默认只返回未退役的设备，支持按设备类型、状态、归属等条件过滤
+    
+    Query Parameters:
+        device_type_id: 设备类型ID（可选）
+        status: 设备状态（可选）
+        ownership: 设备归属（可选）
+        pond_id: 养殖池ID（可选）
+        include_retired: 是否包含已退役设备（可选，默认false）
+    
+    Returns:
+        JSON格式的设备列表数据
+    """
+    try:
+        # 获取查询参数
+        device_type_id = request.args.get('device_type_id', type=int)
+        status = request.args.get('status')
+        ownership = request.args.get('ownership')
+        pond_id = request.args.get('pond_id', type=int)
+        include_retired = request.args.get('include_retired', 'false').lower() == 'true'
+        
+        with db_session_factory() as session:
+            # 构建查询
+            query = session.query(Device)
+            
+            # 默认排除已退役的设备（除非明确要求包含或用户选择了retired状态）
+            # 如果用户明确选择status='retired'，则自动包含已退役设备
+            should_include_retired = include_retired or (status == 'retired')
+            
+            if not should_include_retired:
+                query = query.filter(
+                    (Device.retired_at.is_(None)) & (Device.status != 'retired')
+                )
+            
+            # 应用过滤条件
+            if device_type_id:
+                query = query.filter(Device.device_type_id == device_type_id)
+            if status:
+                query = query.filter(Device.status == status)
+            if ownership:
+                query = query.filter(Device.ownership == ownership)
+            if pond_id:
+                query = query.filter(Device.pond_id == pond_id)
+            
+            # 按创建时间倒序排列
+            devices = query.order_by(Device.created_at.desc()).all()
+            
+            # 获取所有设备类型ID，批量查询设备类型信息
+            device_type_ids = [d.device_type_id for d in devices if d.device_type_id]
+            device_types = {}
+            if device_type_ids:
+                types = session.query(DeviceType).filter(DeviceType.id.in_(device_type_ids)).all()
+                device_types = {dt.id: dt for dt in types}
+            
+            # 构建返回数据
+            device_list = []
+            for device in devices:
+                device_type = device_types.get(device.device_type_id) if device.device_type_id else None
+                device_info = {
+                    "id": device.id,
+                    "device_id": device.device_id,
+                    "name": device.name,
+                    "description": device.description,
+                    "ownership": device.ownership,
+                    "device_type_id": device.device_type_id,
+                    "device_type_name": device_type.name if device_type else None,
+                    "device_type_code": device_type.type_code if device_type else None,
+                    "model": device.model,
+                    "manufacturer": device.manufacturer,
+                    "serial_number": device.serial_number,
+                    "location": device.location,
+                    "pond_id": device.pond_id,
+                    "firmware_version": device.firmware_version,
+                    "hardware_version": device.hardware_version,
+                    "ip_address": device.ip_address,
+                    "mac_address": device.mac_address,
+                    "config_json": device.config_json,
+                    "tags": device.tags,
+                    "status": device.status,
+                    "switch_status": device.switch_status,
+                    "priority": device.priority,
+                    "installed_at": device.installed_at.isoformat() if device.installed_at else None,
+                    "last_maintenance_at": device.last_maintenance_at.isoformat() if device.last_maintenance_at else None,
+                    "next_maintenance_at": device.next_maintenance_at.isoformat() if device.next_maintenance_at else None,
+                    "warranty_expires_at": device.warranty_expires_at.isoformat() if device.warranty_expires_at else None,
+                    "created_at": device.created_at.isoformat() if device.created_at else None,
+                    "updated_at": device.updated_at.isoformat() if device.updated_at else None
+                }
+                device_list.append(device_info)
+        
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": device_list
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取设备列表失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": []
+        }), 500
+
+@api_bp.route('/device/<device_id>', methods=['GET'])
+def get_device_detail(device_id):
+    """
+    获取设备详情
+    
+    Args:
+        device_id: 设备ID（可以是数据库主键id或device_id UUID）
+    
+    Returns:
+        JSON格式的设备详情数据
+    """
+    try:
+        with db_session_factory() as session:
+            # 尝试按主键ID查询，如果失败则按device_id查询
+            try:
+                device_id_int = int(device_id)
+                device = session.query(Device).filter(Device.id == device_id_int).first()
+            except ValueError:
+                device = session.query(Device).filter(Device.device_id == device_id).first()
+            
+            if not device:
+                return jsonify({
+                    "code": 404,
+                    "message": f"设备 {device_id} 不存在",
+                    "data": None
+                }), 404
+            
+            # 查询设备类型信息
+            device_type = None
+            if device.device_type_id:
+                device_type = session.query(DeviceType).filter(DeviceType.id == device.device_type_id).first()
+            
+            device_info = {
+                "id": device.id,
+                "device_id": device.device_id,
+                "name": device.name,
+                "description": device.description,
+                "ownership": device.ownership,
+                "device_type_id": device.device_type_id,
+                "device_type_name": device_type.name if device_type else None,
+                "device_type_code": device_type.type_code if device_type else None,
+                "model": device.model,
+                "manufacturer": device.manufacturer,
+                "serial_number": device.serial_number,
+                "location": device.location,
+                "pond_id": device.pond_id,
+                "firmware_version": device.firmware_version,
+                "hardware_version": device.hardware_version,
+                "ip_address": device.ip_address,
+                "mac_address": device.mac_address,
+                "config_json": device.config_json,
+                "tags": device.tags,
+                "status": device.status,
+                "switch_status": device.switch_status,
+                "priority": device.priority,
+                "installed_at": device.installed_at.isoformat() if device.installed_at else None,
+                "last_maintenance_at": device.last_maintenance_at.isoformat() if device.last_maintenance_at else None,
+                "next_maintenance_at": device.next_maintenance_at.isoformat() if device.next_maintenance_at else None,
+                "warranty_expires_at": device.warranty_expires_at.isoformat() if device.warranty_expires_at else None,
+                "retired_at": device.retired_at.isoformat() if device.retired_at else None,
+                "created_at": device.created_at.isoformat() if device.created_at else None,
+                "updated_at": device.updated_at.isoformat() if device.updated_at else None
+            }
+            
+            return jsonify({
+                "code": 200,
+                "message": "success",
+                "data": device_info
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"获取设备详情失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
+
+@api_bp.route('/device', methods=['POST'])
+def create_device():
+    """
+    创建新设备
+    
+    Request Body:
+        {
+            "name": "设备名称（必需）",
+            "device_type_id": 1,  // 设备类型ID（可选）
+            "description": "设备描述（可选）",
+            "ownership": "设备归属（必需）",
+            "model": "设备型号（可选）",
+            "manufacturer": "制造商（可选）",
+            "serial_number": "序列号（可选）",
+            "location": "安装位置（可选）",
+            "pond_id": 1,  // 养殖池ID（可选）
+            "ip_address": "IP地址（可选）",
+            "mac_address": "MAC地址（可选）",
+            "status": "active",  // 设备状态（可选，默认active）
+            "switch_status": "off",  // 开关状态（可选，默认off）
+            "priority": "medium",  // 优先级（可选，默认medium）
+            "config_json": {},  // 配置参数JSON（可选）
+            "tags": "标签1,标签2"  // 标签（可选）
+        }
+    
+    Returns:
+        JSON格式的创建结果
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                "code": 400,
+                "message": "请求必须是JSON格式",
+                "data": None
+            }), 400
+        
+        data = request.get_json()
+        
+        # 验证必填字段
+        if not data.get('name'):
+            return jsonify({
+                "code": 400,
+                "message": "缺少必填字段: name",
+                "data": None
+            }), 400
+        
+        if not data.get('ownership'):
+            return jsonify({
+                "code": 400,
+                "message": "缺少必填字段: ownership",
+                "data": None
+            }), 400
+        
+        with db_session_factory() as session:
+            # 验证设备类型是否存在（如果提供了device_type_id）
+            if data.get('device_type_id'):
+                device_type = session.query(DeviceType).filter_by(
+                    id=data['device_type_id']
+                ).first()
+                if not device_type:
+                    return jsonify({
+                        "code": 400,
+                        "message": f"设备类型ID {data['device_type_id']} 不存在",
+                        "data": None
+                    }), 400
+            
+            # 生成唯一的device_id（UUID格式）
+            device_id = str(uuid.uuid4())
+            
+            # 检查device_id是否已存在（理论上不会，但为了安全）
+            existing = session.query(Device).filter_by(device_id=device_id).first()
+            if existing:
+                device_id = str(uuid.uuid4())  # 重新生成
+            
+            # 检查序列号是否已存在（如果提供了）
+            if data.get('serial_number'):
+                existing_serial = session.query(Device).filter_by(
+                    serial_number=data['serial_number']
+                ).first()
+                if existing_serial:
+                    return jsonify({
+                        "code": 400,
+                        "message": f"序列号 {data['serial_number']} 已存在",
+                        "data": None
+                    }), 400
+            
+            # 获取设备状态，用于自动设置 retired_at
+            device_status = data.get('status', 'active')
+            
+            # 创建设备对象（需要提供所有字段，可选字段设为None）
+            device = Device(
+                device_id=device_id,
+                name=data['name'],
+                ownership=data['ownership'],
+                description=data.get('description'),
+                device_type_id=data.get('device_type_id'),
+                model=data.get('model'),
+                manufacturer=data.get('manufacturer'),
+                serial_number=data.get('serial_number'),
+                location=data.get('location'),
+                pond_id=data.get('pond_id'),
+                firmware_version=data.get('firmware_version'),
+                hardware_version=data.get('hardware_version'),
+                ip_address=data.get('ip_address'),
+                mac_address=data.get('mac_address'),
+                config_json=data.get('config_json'),
+                tags=data.get('tags'),
+                status=device_status,
+                switch_status=data.get('switch_status', 'off'),
+                priority=data.get('priority', 'medium'),
+                installed_at=datetime.fromisoformat(data['installed_at']) if data.get('installed_at') else None,
+                last_maintenance_at=datetime.fromisoformat(data['last_maintenance_at']) if data.get('last_maintenance_at') else None,
+                next_maintenance_at=datetime.fromisoformat(data['next_maintenance_at']) if data.get('next_maintenance_at') else None,
+                warranty_expires_at=datetime.fromisoformat(data['warranty_expires_at']) if data.get('warranty_expires_at') else None,
+                retired_at=datetime.now() if device_status == 'retired' else None  # 如果状态为retired，自动设置退役时间
+            )
+            
+            session.add(device)
+            session.commit()
+            
+            logger.info(f"成功创建设备: {device_id} - {data['name']}")
+            
+            return jsonify({
+                "code": 200,
+                "message": "设备创建成功",
+                "data": {
+                    "id": device.id,
+                    "device_id": device.device_id,
+                    "name": device.name
+                }
+            }), 201
+            
+    except ValueError as e:
+        logger.error(f"创建设备失败（数据格式错误）: {str(e)}")
+        return jsonify({
+            "code": 400,
+            "message": f"数据格式错误: {str(e)}",
+            "data": None
+        }), 400
+    except Exception as e:
+        logger.error(f"创建设备失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
+
+@api_bp.route('/device/<device_id>', methods=['PUT'])
+def update_device(device_id):
+    """
+    更新设备信息
+    
+    Args:
+        device_id: 设备ID（可以是数据库主键id或device_id UUID）
+    
+    Request Body:
+        支持部分更新，只需提供要更新的字段
+        {
+            "name": "新设备名称",
+            "description": "新描述",
+            "status": "active",
+            // ... 其他可更新字段
+        }
+    
+    Returns:
+        JSON格式的更新结果
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                "code": 400,
+                "message": "请求必须是JSON格式",
+                "data": None
+            }), 400
+        
+        data = request.get_json()
+        
+        with db_session_factory() as session:
+            # 查找设备
+            try:
+                device_id_int = int(device_id)
+                device = session.query(Device).filter(Device.id == device_id_int).first()
+            except ValueError:
+                device = session.query(Device).filter(Device.device_id == device_id).first()
+            
+            if not device:
+                return jsonify({
+                    "code": 404,
+                    "message": f"设备 {device_id} 不存在",
+                    "data": None
+                }), 404
+            
+            # 验证设备类型（如果提供了）
+            if data.get('device_type_id'):
+                device_type = session.query(DeviceType).filter_by(
+                    id=data['device_type_id']
+                ).first()
+                if not device_type:
+                    return jsonify({
+                        "code": 400,
+                        "message": f"设备类型ID {data['device_type_id']} 不存在",
+                        "data": None
+                    }), 400
+            
+            # 验证序列号（如果提供了且与现有不同）
+            if data.get('serial_number') and data['serial_number'] != device.serial_number:
+                existing_serial = session.query(Device).filter(
+                    Device.serial_number == data['serial_number'],
+                    Device.id != device.id
+                ).first()
+                if existing_serial:
+                    return jsonify({
+                        "code": 400,
+                        "message": f"序列号 {data['serial_number']} 已被其他设备使用",
+                        "data": None
+                    }), 400
+            
+            # 更新字段
+            updatable_fields = [
+                'name', 'description', 'ownership', 'device_type_id', 'model',
+                'manufacturer', 'serial_number', 'location', 'pond_id',
+                'firmware_version', 'hardware_version', 'ip_address', 'mac_address',
+                'config_json', 'tags', 'status', 'switch_status', 'priority'
+            ]
+            
+            # 记录更新前的状态，用于判断 retired_at 的变化
+            old_status = device.status
+            
+            for field in updatable_fields:
+                if field in data:
+                    setattr(device, field, data[field])
+            
+            # 根据设备状态自动处理 retired_at
+            # 如果状态变为 retired，设置退役时间；如果从 retired 变为其他状态，清空退役时间
+            if 'status' in data:
+                new_status = data['status']
+                if new_status == 'retired' and old_status != 'retired':
+                    # 状态变为 retired，设置退役时间为当前时间
+                    device.retired_at = datetime.now()
+                elif new_status != 'retired' and old_status == 'retired':
+                    # 状态从 retired 变为其他状态，清空退役时间
+                    device.retired_at = None
+            
+            # 处理时间字段（移除 retired_at，因为它由状态自动管理）
+            time_fields = {
+                'installed_at': 'installed_at',
+                'last_maintenance_at': 'last_maintenance_at',
+                'next_maintenance_at': 'next_maintenance_at',
+                'warranty_expires_at': 'warranty_expires_at'
+            }
+            
+            for key, attr in time_fields.items():
+                if key in data:
+                    if data[key]:
+                        setattr(device, attr, datetime.fromisoformat(data[key]))
+                    else:
+                        setattr(device, attr, None)
+            
+            session.commit()
+            
+            logger.info(f"成功更新设备: {device_id} - {device.name}")
+            
+            return jsonify({
+                "code": 200,
+                "message": "设备更新成功",
+                "data": {
+                    "id": device.id,
+                    "device_id": device.device_id,
+                    "name": device.name
+                }
+            }), 200
+            
+    except ValueError as e:
+        logger.error(f"更新设备失败（数据格式错误）: {str(e)}")
+        return jsonify({
+            "code": 400,
+            "message": f"数据格式错误: {str(e)}",
+            "data": None
+        }), 400
+    except Exception as e:
+        logger.error(f"更新设备失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
+
+@api_bp.route('/device/<device_id>', methods=['DELETE'])
+def delete_device(device_id):
+    """
+    删除设备（软删除，设置retired_at字段）
+    
+    Args:
+        device_id: 设备ID（可以是数据库主键id或device_id UUID）
+    
+    Returns:
+        JSON格式的删除结果
+    """
+    try:
+        with db_session_factory() as session:
+            # 查找设备
+            try:
+                device_id_int = int(device_id)
+                device = session.query(Device).filter(Device.id == device_id_int).first()
+            except ValueError:
+                device = session.query(Device).filter(Device.device_id == device_id).first()
+            
+            if not device:
+                return jsonify({
+                    "code": 404,
+                    "message": f"设备 {device_id} 不存在",
+                    "data": None
+                }), 404
+            
+            # 软删除：设置retired_at和status
+            device.retired_at = datetime.now()
+            device.status = 'retired'
+            
+            session.commit()
+            
+            logger.info(f"成功删除设备: {device_id} - {device.name}")
+            
+            return jsonify({
+                "code": 200,
+                "message": "设备删除成功",
+                "data": {
+                    "id": device.id,
+                    "device_id": device.device_id,
+                    "name": device.name
+                }
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"删除设备失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
         }), 500
