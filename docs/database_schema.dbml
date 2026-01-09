@@ -79,7 +79,7 @@ Table devices {
   hardware_version varchar(64) [note: '硬件版本']
   ip_address varchar(45) [note: '设备IP地址']
   mac_address varchar(17) [note: 'MAC地址']
-  config_json json [note: '设备配置参数']
+  config_json json [note: '设备配置参数（包括认证信息、API配置等）']
   tags json [note: '设备标签（JSON数组）']
   installed_at timestamp [note: '安装时间']
   last_maintenance_at timestamp [note: '最后维护时间']
