@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 
 from .llm_utils import execute_llm_call, LLMConfig, format_messages_for_llm, format_config_for_llm
 from langchain_core.messages import HumanMessage
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,13 @@ class QueryRewriter:
         Returns:
             tuple: (重写后的查询, 统计信息)
         """
-        system_prompt = """你是一个查询重写专家，专门处理日本陆上养殖数据查询的上下文理解。
+        now = datetime.now()
+        current_date = now.strftime("%Y年%m月%d日")
+        current_time = now.strftime("%H:%M:%S")
+        system_prompt = f"""你是一个查询重写专家，专门处理日本陆上养殖数据查询的上下文理解。
+【重要】当前时间信息：
+- 今天是：{current_date}
+- 当前时间：{current_time}
 
 你的任务：
 1. 分析用户的简短问题（如"那pH值呢？"、"再查一下"等）
@@ -59,6 +66,7 @@ class QueryRewriter:
 - 保持原问题的核心意图，补充完整信息
 - 如果问题已经很完整，可以保持原样或稍作优化
 - 使用专业术语，确保问题清晰明确，便于专家进行数据查询和聚合
+- 【时间处理】对于相对时间表述（如"最近两天"、"昨天"、"上周"），保持原样，不需要转换为具体日期，如果一定要转换，请使用当前时间作为参考。
 
 示例：
 - 历史：用户问"查询水温"，AI回答"水温是25.5°C"
@@ -67,7 +75,6 @@ class QueryRewriter:
 - 用户："再查一下" -> 重写为："查询刚才讨论的水温数据的最新值和变化趋势"
 
 请只返回重写后的查询，不要添加其他解释。"""
-        
         # 构建历史上下文摘要
         history_context = ""
         if history and len(history) > 0:
@@ -86,7 +93,6 @@ class QueryRewriter:
         context_str = ""
         if context:
             context_str = f"\n额外上下文：{context}"
-        
         user_prompt = f"""对话历史：
 {history_context if history_context else "（无历史记录）"}{context_str}
 
