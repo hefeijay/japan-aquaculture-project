@@ -30,6 +30,7 @@ class Feeder(Base):
     __tablename__ = "feeders"
     __table_args__ = (
         Index("idx_feeder_group", "group_id"),
+        Index("idx_feeder_pond", "pond_id"),
     )
     
     # 主键ID
@@ -41,14 +42,30 @@ class Feeder(Base):
         init=False
     )
     
-    # 关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/status等基础信息
+    # 关联设备ID（FK）- 一对一关系
     device_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("devices.id"),
         unique=True,
         nullable=False,
-        comment="关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/status等基础信息"
+        comment="关联设备ID（FK）"
     )
+    
+    # ===== 冗余字段（快照字段，从 devices 同步，便于查询） =====
+    # 设备名称（快照字段）
+    name: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        comment="设备名称（快照字段，从devices同步）"
+    )
+    
+    # 所属养殖池ID（快照字段）
+    pond_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        comment="所属养殖池ID（快照字段，从devices同步）"
+    )
+    # ===== 冗余字段结束 =====
     
     # 云端同步配置
     # 默认喂食份数（来自云端API的feedCount）
@@ -126,5 +143,6 @@ class Feeder(Base):
     
     # ORM 关系
     device: Mapped["Device"] = relationship(back_populates="feeder", init=False)
+    pond: Mapped[Optional["Pond"]] = relationship(init=False)
     feeder_logs: Mapped[list["FeederLog"]] = relationship(back_populates="feeder", cascade="all, delete-orphan", init=False)
 

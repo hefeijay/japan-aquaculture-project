@@ -63,6 +63,9 @@ class Pond(Base):
     # ORM 关系定义
     batches: Mapped[List["Batch"]] = relationship(back_populates="pond", init=False)
     devices: Mapped[List["Device"]] = relationship(back_populates="pond", init=False)
+    sensors: Mapped[List["Sensor"]] = relationship(back_populates="pond", init=False)
+    feeders: Mapped[List["Feeder"]] = relationship(back_populates="pond", init=False)
+    cameras: Mapped[List["Camera"]] = relationship(back_populates="pond", init=False)
     sensor_readings: Mapped[List["SensorReading"]] = relationship(back_populates="pond", init=False)
     feeder_logs: Mapped[List["FeederLog"]] = relationship(back_populates="pond", init=False)
     camera_images: Mapped[List["CameraImage"]] = relationship(back_populates="pond", init=False)

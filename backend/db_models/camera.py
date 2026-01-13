@@ -34,6 +34,9 @@ class Camera(Base):
     device_id是UNIQUE，自动有索引
     """
     __tablename__ = "cameras"
+    __table_args__ = (
+        Index("idx_camera_pond", "pond_id"),
+    )
     
     # 主键ID
     id: Mapped[int] = mapped_column(
@@ -44,14 +47,30 @@ class Camera(Base):
         init=False
     )
     
-    # 关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/location等基础信息
+    # 关联设备ID（FK）- 一对一关系
     device_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("devices.id"),
         unique=True,
         nullable=False,
-        comment="关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/location等基础信息"
+        comment="关联设备ID（FK）"
     )
+    
+    # ===== 冗余字段（快照字段，从 devices 同步，便于查询） =====
+    # 设备名称（快照字段）
+    name: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        comment="设备名称（快照字段，从devices同步）"
+    )
+    
+    # 所属养殖池ID（快照字段）
+    pond_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        comment="所属养殖池ID（快照字段，从devices同步）"
+    )
+    # ===== 冗余字段结束 =====
     
     # 当前状态信息（原 camera_status）
     # 画质(高/中/低)
@@ -160,6 +179,7 @@ class Camera(Base):
     
     # ORM 关系
     device: Mapped["Device"] = relationship(back_populates="camera", init=False)
+    pond: Mapped[Optional["Pond"]] = relationship(init=False)
     camera_images: Mapped[list["CameraImage"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
     camera_health: Mapped[list["CameraHealth"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
 
