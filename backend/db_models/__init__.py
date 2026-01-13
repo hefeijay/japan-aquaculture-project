@@ -2,7 +2,7 @@
 from .base import Base, db
 from .agent_task import AgentTask
 from .ai_decision import AIDecision, MessageType, DecisionRule
-from .camera import CameraStatus, CameraImage, CameraHealth
+from .camera import Camera, CameraImage, CameraHealth
 from .chat_history import ChatHistory
 from .device import Device, DeviceType
 from .pond import Pond
@@ -19,6 +19,7 @@ from .message_queue import MessageQueue
 from .shrimp_stats import ShrimpStats
 from .batch import Batch
 from .feeder_log import FeederLog
+from .feeder import Feeder
 from .operation_log import OperationLog
 from .manual_doc import ManualDoc
 from .history_record import HistoryRecord
@@ -32,7 +33,7 @@ __all__ = [
     "AIDecision",
     "MessageType", 
     "DecisionRule",
-    "CameraStatus",
+    "Camera",
     "CameraImage",
     "CameraHealth",
     "ChatHistory",
@@ -51,6 +52,7 @@ __all__ = [
     "MessageQueue",
     "ShrimpStats",
     "Batch",
+    "Feeder",
     "FeederLog",
     "OperationLog",
     "ManualDoc",

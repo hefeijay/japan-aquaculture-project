@@ -1,4 +1,5 @@
-from typing import Optional 
+from __future__ import annotations
+from typing import Optional, List
 from datetime import datetime, timezone 
 
 from sqlalchemy import ( 
@@ -7,11 +8,13 @@ from sqlalchemy import (
     TIMESTAMP, 
     Integer, 
     ForeignKey, 
-    Float, 
+    text,
+    Float
 ) 
 from sqlalchemy.dialects.mysql import TEXT 
 from sqlalchemy.orm import Mapped, mapped_column, relationship 
 from .base import Base 
+
 
 class Pond(Base): 
     """ 
@@ -37,8 +40,33 @@ class Pond(Base):
     description: Mapped[Optional[str]] = mapped_column(TEXT, comment="描述/备注") 
     
     # 记录创建和更新时间 
-    created_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=datetime.now(timezone.utc), comment="创建时间")
-    updated_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), comment="最后更新时间")
-
-    # ORM 关系：一个养殖池可以有多个传感器 
-    sensors: Mapped[list["Sensor"]] = relationship(back_populates="pond", cascade="all, delete-orphan", init=False)
+    # 创建时间
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="创建时间",
+        init=False
+    )
+    
+    # 更新时间
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="更新时间",
+        init=False
+    )
+    # # ORM 关系：一个养殖池可以有多个传感器 
+    # sensors: Mapped[list["Sensor"]] = relationship(back_populates="pond", cascade="all, delete-orphan", init=False)
+    # ORM 关系定义
+    batches: Mapped[List["Batch"]] = relationship(back_populates="pond", init=False)
+    devices: Mapped[List["Device"]] = relationship(back_populates="pond", init=False)
+    sensor_readings: Mapped[List["SensorReading"]] = relationship(back_populates="pond", init=False)
+    feeder_logs: Mapped[List["FeederLog"]] = relationship(back_populates="pond", init=False)
+    camera_images: Mapped[List["CameraImage"]] = relationship(back_populates="pond", init=False)
+    camera_health: Mapped[List["CameraHealth"]] = relationship(back_populates="pond", init=False)
+    shrimp_stats: Mapped[List["ShrimpStats"]] = relationship(back_populates="pond", init=False)
+    operation_logs: Mapped[List["OperationLog"]] = relationship(back_populates="pond", init=False)
+    # tasks: Mapped[List["Task"]] = relationship(back_populates="pond", init=False)

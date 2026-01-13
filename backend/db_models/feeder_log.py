@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-喂食机记录ORM模型
-对应 feeders_logs 表，存储喂食机运行记录
+喂食机运行记录ORM模型
+对应 feeder_logs 表，存储喂食机运行记录
 """
 
 from typing import Optional
@@ -18,9 +18,10 @@ from sqlalchemy import (
     Text,
     TIMESTAMP,
     Index,
+    ForeignKey,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.mysql import DATETIME
 from .base import Base
 
@@ -28,12 +29,12 @@ from .base import Base
 class FeederLog(Base):
     """
     喂食机运行记录表
-    存储喂食机的运行记录，包括投喂量、运行时长、状态等
+    pond_id为快照字段，优化LLM查询和保证历史数据一致性
     """
-    __tablename__ = "feeders_logs"
+    __tablename__ = "feeder_logs"
     __table_args__ = (
         Index("idx_fl_feeder_ts", "feeder_id", "ts_utc"),
-        Index("idx_fl_batch_ts", "batch_id", "ts_utc"),
+        Index("idx_fl_pond_ts", "pond_id", "ts_utc"),
     )
     
     # 主键ID
@@ -45,24 +46,27 @@ class FeederLog(Base):
         init=False
     )
     
-    # 喂食机设备ID（FK，引用devices.id）
+    # 喂食机ID（FK）
     feeder_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("feeders.id"),
         nullable=False,
-        comment="喂食机设备ID（FK，引用devices.id）"
+        comment="喂食机ID（FK）"
+    )
+    
+    # 所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化
+    pond_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        nullable=False,
+        comment="所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化"
     )
     
     # 批次ID（FK）
     batch_id: Mapped[Optional[int]] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("batches.batch_id"),
         comment="批次ID（FK）",
-        init=False
-    )
-    
-    # 池号/分区（冗余）
-    pool_id: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="池号/分区（冗余）",
         init=False
     )
     
@@ -141,6 +145,11 @@ class FeederLog(Base):
         comment="更新时间",
         init=False
     )
+    
+    # ORM 关系
+    feeder: Mapped["Feeder"] = relationship(back_populates="feeder_logs", init=False)
+    pond: Mapped["Pond"] = relationship(back_populates="feeder_logs", init=False)
+    batch: Mapped[Optional["Batch"]] = relationship(init=False)
 
 
 

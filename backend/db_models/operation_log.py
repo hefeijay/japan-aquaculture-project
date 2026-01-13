@@ -15,9 +15,10 @@ from sqlalchemy import (
     TIMESTAMP,
     Index,
     Integer,
+    ForeignKey,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.mysql import DATETIME
 from .base import Base
 
@@ -31,6 +32,7 @@ class OperationLog(Base):
     __table_args__ = (
         Index("idx_ol_operator_ts", "operator_id", "ts_utc"),
         Index("idx_ol_batch_ts", "batch_id", "ts_utc"),
+        Index("idx_ol_pond_ts", "pond_id", "ts_utc"),
     )
     
     # 主键ID
@@ -52,14 +54,16 @@ class OperationLog(Base):
     # 批次ID（FK）
     batch_id: Mapped[Optional[int]] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("batches.batch_id"),
         comment="批次ID（FK）",
         init=False
     )
     
-    # 池号/分区
-    pool_id: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="池号/分区",
+    # 所属养殖池ID（FK）
+    pond_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        comment="所属养殖池ID（FK）",
         init=False
     )
     
@@ -116,6 +120,10 @@ class OperationLog(Base):
         comment="更新时间",
         init=False
     )
+    
+    # ORM 关系
+    pond: Mapped[Optional["Pond"]] = relationship(init=False)
+    batch: Mapped[Optional["Batch"]] = relationship(init=False)
 
 
 

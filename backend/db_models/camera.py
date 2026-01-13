@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 摄像头数据库模型
-用于存储和管理摄像头状态、图片和健康检查数据
+用于存储和管理摄像头扩展信息、图片和健康检查数据
 """
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -18,99 +18,85 @@ from sqlalchemy import (
     BigInteger,
     DECIMAL,
     Boolean,
+    ForeignKey,
     text,
 )
 from sqlalchemy.dialects.mysql import TEXT, DATETIME
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Enum
 from .base import Base
 
 
-class CameraStatus(Base):
+class Camera(Base):
     """
-    摄像头状态模型
-    存储摄像头的基本状态信息
+    摄像头扩展表
+    存储摄像头配置和当前状态信息。与devices表1:1关联，与sensors/feeders架构保持一致。
+    device_id是UNIQUE，自动有索引
     """
-    __tablename__ = "camera_status"
-    __table_args__ = (
-        Index("idx_camera_id", "camera_id"),
-        Index("idx_status", "status"),
-        Index("idx_location", "location"),
-        Index("idx_created_at", "created_at"),
-    )
+    __tablename__ = "cameras"
     
     # 主键ID
     id: Mapped[int] = mapped_column(
         Integer, 
         primary_key=True, 
         autoincrement=True, 
-        comment="主键ID"
+        comment="主键ID",
+        init=False
     )
     
-    # 摄像头ID
-    camera_id: Mapped[int] = mapped_column(
+    # 关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/location等基础信息
+    device_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("devices.id"),
+        unique=True,
         nullable=False,
-        comment="摄像头ID"
+        comment="关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/location等基础信息"
     )
     
-    # 摄像头名称
-    name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="摄像头名称"
-    )
-    
-    # 摄像头位置
-    location: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="摄像头位置"
-    )
-    
-    # 摄像头状态
-    status: Mapped[str] = mapped_column(
+    # 当前状态信息（原 camera_status）
+    # 画质(高/中/低)
+    quality: Mapped[Optional[str]] = mapped_column(
         String(50),
-        nullable=False,
-        comment="摄像头状态(在线/离线)"
+        comment="画质(高/中/低)",
+        init=False
     )
     
-    # 画质
-    quality: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        comment="画质(高/中/低)"
+    # 连通性百分比
+    connectivity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="连通性百分比"
     )
     
-    # 分辨率
-    resolution: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        comment="分辨率"
+    # 温度
+    temperature: Mapped[Optional[Decimal]] = mapped_column(
+        DECIMAL(5, 2),
+        comment="温度",
+        init=False
     )
     
-    # 最后更新时间戳
-    last_update: Mapped[int] = mapped_column(
+    # 最后更新时间戳(毫秒)
+    last_update: Mapped[Optional[int]] = mapped_column(
         BIGINT,
-        nullable=False,
-        comment="最后更新时间戳(毫秒)"
+        comment="最后更新时间戳(毫秒)",
+        init=False
     )
     
     # 最后更新时间字符串
-    last_update_time: Mapped[str] = mapped_column(
+    last_update_time: Mapped[Optional[str]] = mapped_column(
         String(50),
-        nullable=False,
-        comment="最后更新时间字符串"
+        comment="最后更新时间字符串",
+        init=False
     )
     
-    # 温度 - 可选字段，添加默认值
-    temperature: Mapped[Optional[Decimal]] = mapped_column(
-        DECIMAL(5, 2),
-        default=None,
-        comment="温度"
+    # 摄像头特有配置
+    # 分辨率
+    resolution: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        comment="分辨率",
+        init=False
     )
     
-    # 以下字段有默认值，放在最后
     # 帧率
     fps: Mapped[int] = mapped_column(
         Integer,
@@ -118,28 +104,35 @@ class CameraStatus(Base):
         comment="帧率"
     )
     
-    # 连通性
-    connectivity: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        comment="连通性百分比"
+    # 编解码
+    codec: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        comment="编解码",
+        init=False
     )
     
-    # 是否录制
+    # 流媒体地址
+    stream_url: Mapped[Optional[str]] = mapped_column(
+        String(512),
+        comment="流媒体地址",
+        init=False
+    )
+    
+    # 是否正在录制
     recording: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
         comment="是否正在录制"
     )
     
-    # 夜视功能
+    # 是否开启夜视功能
     night_vision: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
         comment="是否开启夜视功能"
     )
     
-    # 运动检测
+    # 是否开启运动检测
     motion_detection: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
@@ -151,8 +144,8 @@ class CameraStatus(Base):
         TIMESTAMP,
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
-        default=None,
-        comment="创建时间"
+        comment="创建时间",
+        init=False
     )
     
     # 更新时间
@@ -161,75 +154,59 @@ class CameraStatus(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
-        default=None,
-        comment="更新时间"
+        comment="更新时间",
+        init=False
     )
+    
+    # ORM 关系
+    device: Mapped["Device"] = relationship(back_populates="camera", init=False)
+    camera_images: Mapped[list["CameraImage"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
+    camera_health: Mapped[list["CameraHealth"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
 
 
 class CameraImage(Base):
     """
     摄像头图片模型
-    存储摄像头拍摄的图片信息
-    符合数据处理计划要求，包含批次、池号、时间戳、质量标记等字段
+    pond_id为快照字段，优化LLM查询和保证历史数据一致性
     """
     __tablename__ = "camera_images"
     __table_args__ = (
-        Index("idx_camera_id", "camera_id"),
-        Index("idx_status", "status"),
-        Index("idx_timestamp", "timestamp"),
-        Index("idx_created_at", "created_at"),
-        Index("idx_if_batch_ts", "batch_id", "ts_utc"),
+        Index("idx_camera_images_camera", "camera_id"),
+        Index("idx_ci_pond_ts", "pond_id", "ts_utc"),
+        Index("idx_ci_batch_ts", "batch_id", "ts_utc"),
     )
     
     # 主键ID
     id: Mapped[int] = mapped_column(
-        Integer, 
+        BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True, 
         autoincrement=True, 
         comment="主键ID",
         init=False
     )
     
-    # 摄像头ID
+    # 摄像头ID（FK）
     camera_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("cameras.id"),
         nullable=False,
-        comment="摄像头ID"
+        comment="摄像头ID（FK）"
     )
     
-    # 批次ID（FK，关联到batches表）
+    # 所属养殖池ID（FK）- 快照字段，记录拍摄时的池位，用于历史数据一致性和LLM查询优化
+    pond_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        nullable=False,
+        comment="所属养殖池ID（FK）- 快照字段，记录拍摄时的池位，用于历史数据一致性和LLM查询优化"
+    )
+    
+    # 批次ID（FK）
     batch_id: Mapped[Optional[int]] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("batches.batch_id"),
         comment="批次ID（FK）",
         init=False
-    )
-    
-    # 池号/分区标识（冗余便于查询）
-    pool_id: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="池号/分区（冗余）",
-        init=False
-    )
-    
-    # 摄像头名称
-    name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="摄像头名称"
-    )
-    
-    # 摄像头位置
-    location: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="摄像头位置"
-    )
-    
-    # 摄像头状态
-    status: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        comment="摄像头状态(在线/离线)"
     )
     
     # 图片URL
@@ -246,25 +223,11 @@ class CameraImage(Base):
         init=False
     )
     
-    # 最后更新时间戳
-    last_update: Mapped[int] = mapped_column(
-        BIGINT,
-        nullable=False,
-        comment="最后更新时间戳(毫秒)"
-    )
-    
-    # 时间戳（保留原有字段以兼容）
-    timestamp: Mapped[int] = mapped_column(
-        BIGINT,
-        nullable=False,
-        comment="图片时间戳(毫秒)"
-    )
-    
-    # UTC时间戳（毫秒精度）
-    ts_utc: Mapped[Optional[datetime]] = mapped_column(
+    # UTC时间戳
+    ts_utc: Mapped[datetime] = mapped_column(
         DATETIME(3),
-        comment="UTC时间戳",
-        init=False
+        nullable=False,
+        comment="UTC时间戳"
     )
     
     # 本地时间戳（日本时区）
@@ -274,72 +237,53 @@ class CameraImage(Base):
         init=False
     )
     
-    # 创建时间
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        server_default=text("CURRENT_TIMESTAMP"),
-        nullable=False,
-        default=None,
-        comment="创建时间"
-    )
-    
-    # 更新时间
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        server_default=text("CURRENT_TIMESTAMP"),
-        onupdate=text("CURRENT_TIMESTAMP"),
-        nullable=False,
-        default=None,
-        comment="更新时间"
-    )
-    
-    # 时间戳字符串
+    # 图片时间戳字符串
     timestamp_str: Mapped[str] = mapped_column(
         String(50),
         default="",
         comment="图片时间戳字符串"
     )
     
-    # 图片宽度
+    # 图片宽度（像素）
     width: Mapped[int] = mapped_column(
         Integer,
         default=1920,
-        comment="图片宽度"
-    )
-    
-    # 图片宽度（像素）
-    width_px: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        comment="宽度像素",
-        init=False
-    )
-    
-    # 图片高度
-    height: Mapped[int] = mapped_column(
-        Integer,
-        default=1080,
-        comment="图片高度"
+        comment="图片宽度（像素）"
     )
     
     # 图片高度（像素）
-    height_px: Mapped[Optional[int]] = mapped_column(
+    height: Mapped[int] = mapped_column(
         Integer,
-        comment="高度像素",
-        init=False
+        default=1080,
+        comment="图片高度（像素）"
     )
     
-    # 图片格式
+    # 图片格式(jpg/png等)
     format: Mapped[str] = mapped_column(
         String(20),
         default="jpg",
         comment="图片格式(jpg/png等)"
     )
     
-    # 编解码（视频）
+    # 图片大小(字节)
+    size: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="图片大小(字节)"
+    )
+    
+    # 编解码
     codec: Mapped[Optional[str]] = mapped_column(
         String(32),
-        comment="编解码（视频）",
+        comment="编解码",
         init=False
+    )
+    
+    # 帧率
+    fps: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="帧率"
     )
     
     # 质量标记（ok/missing/anomaly）
@@ -347,7 +291,7 @@ class CameraImage(Base):
         Enum('ok', 'missing', 'anomaly', name='quality_flag_enum'),
         default='ok',
         nullable=False,
-        comment="质量标记",
+        comment="质量标记（ok/missing/anomaly）",
         init=False
     )
     
@@ -358,32 +302,42 @@ class CameraImage(Base):
         init=False
     )
     
-    # 图片大小
-    size: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        comment="图片大小(字节)"
+    # 创建时间
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="创建时间",
+        init=False
     )
     
-    # 帧率
-    fps: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        comment="帧率"
+    # 更新时间
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="更新时间",
+        init=False
     )
+    
+    # ORM 关系
+    camera: Mapped["Camera"] = relationship(back_populates="camera_images", init=False)
+    pond: Mapped["Pond"] = relationship(back_populates="camera_images", init=False)
+    batch: Mapped[Optional["Batch"]] = relationship(init=False)
 
 
 class CameraHealth(Base):
     """
     摄像头健康检查模型
-    存储摄像头的健康状态和检查结果
+    pond_id为快照字段，优化LLM查询和保证历史数据一致性。通常按池子或状态查询
     """
     __tablename__ = "camera_health"
     __table_args__ = (
-        Index("idx_camera_id", "camera_id"),
-        Index("idx_health_status", "health_status"),
-        Index("idx_overall_score", "overall_score"),
-        Index("idx_created_at", "created_at"),
+        Index("idx_ch_camera_ts", "camera_id", "timestamp"),
+        Index("idx_ch_pond_ts", "pond_id", "timestamp"),
+        Index("idx_camera_health_status", "health_status"),
+        Index("idx_ch_overall_score", "overall_score"),
     )
     
     # 主键ID
@@ -391,28 +345,24 @@ class CameraHealth(Base):
         Integer, 
         primary_key=True, 
         autoincrement=True, 
-        comment="主键ID"
+        comment="主键ID",
+        init=False
     )
     
-    # 摄像头ID
+    # 摄像头ID（FK）
     camera_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("cameras.id"),
         nullable=False,
-        comment="摄像头ID"
+        comment="摄像头ID（FK）"
     )
     
-    # 摄像头名称
-    name: Mapped[str] = mapped_column(
-        String(255),
+    # 所属养殖池ID（FK）- 快照字段，记录检查时的池位，用于历史数据一致性和LLM查询优化
+    pond_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
         nullable=False,
-        comment="摄像头名称"
-    )
-    
-    # 摄像头位置
-    location: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="摄像头位置"
+        comment="所属养殖池ID（FK）- 快照字段，记录检查时的池位，用于历史数据一致性和LLM查询优化"
     )
     
     # 健康状态
@@ -513,18 +463,32 @@ class CameraHealth(Base):
         comment="存储检查消息"
     )
     
-    # 检查时间戳
+    # 检查时间戳(毫秒)
     timestamp: Mapped[int] = mapped_column(
         BIGINT,
         nullable=False,
         comment="检查时间戳(毫秒)"
     )
     
-    # 最后检查时间
+    # 最后检查时间字符串
     last_check: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         comment="最后检查时间字符串"
+    )
+    
+    # 温度
+    temperature: Mapped[Optional[Decimal]] = mapped_column(
+        DECIMAL(5, 2),
+        comment="温度",
+        init=False
+    )
+    
+    # 运行时间(小时)
+    uptime_hours: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        comment="运行时间(小时)",
+        init=False
     )
     
     # 创建时间
@@ -532,7 +496,8 @@ class CameraHealth(Base):
         TIMESTAMP,
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
-        comment="创建时间"
+        comment="创建时间",
+        init=False
     )
     
     # 更新时间
@@ -541,19 +506,10 @@ class CameraHealth(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
-        comment="更新时间"
+        comment="更新时间",
+        init=False
     )
     
-    # 温度
-    temperature: Mapped[Optional[Decimal]] = mapped_column(
-        DECIMAL(5, 2),
-        default=None,
-        comment="温度"
-    )
-    
-    # 运行时间
-    uptime_hours: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        default=None,
-        comment="运行时间(小时)"
-    )
+    # ORM 关系
+    camera: Mapped["Camera"] = relationship(back_populates="camera_health", init=False)
+    pond: Mapped["Pond"] = relationship(back_populates="camera_health", init=False)

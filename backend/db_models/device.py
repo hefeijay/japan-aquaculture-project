@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     ForeignKey,
     Float,
+    text,
     JSON,
 )
 from sqlalchemy.dialects.mysql import TEXT
@@ -18,15 +19,15 @@ from .base import Base
 
 class Device(Base):
     """
-    设备管理信息表
-    用于管理各种类型的设备，包括传感器、执行器等
+    统一设备管理表
+    管理所有类型的设备。通过device_type_id关联device_types表获取类型信息
     """
     __tablename__ = "devices"
     __table_args__ = (
-        Index("idx_device_id", "device_id"),  # 设备唯一标识索引
-        Index("idx_device_status", "status"),  # 设备状态索引
-        Index("idx_device_ownership", "ownership"),  # 设备归属索引
-        Index("idx_device_type", "device_type_id"),  # 设备类型索引
+        Index("idx_device_status", "status"),
+        Index("idx_device_ownership", "ownership"),
+        Index("idx_device_type_status", "device_type_id", "status"),
+        Index("idx_device_pond_status", "pond_id", "status"),
     )
 
     # 主键ID
@@ -61,9 +62,11 @@ class Device(Base):
     )
 
     # 设备类型ID（外键，关联设备类型表）
-    device_type_id: Mapped[Optional[int]] = mapped_column(
+    device_type_id: Mapped[int] = mapped_column(
+        Integer,
         ForeignKey("device_types.id"),
-        comment="设备类型ID"
+        nullable=False,
+        comment="设备类型ID（FK → device_types.id）"
     )
 
     # 设备型号/规格
@@ -93,8 +96,9 @@ class Device(Base):
 
     # 关联养殖池ID（如果适用）
     pond_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
         ForeignKey("ponds.id"),
-        comment="所属养殖池ID"
+        comment="所属养殖池ID（FK）"
     )
 
     # 固件版本
@@ -124,95 +128,92 @@ class Device(Base):
     # 设备配置参数（JSON格式）
     config_json: Mapped[Optional[dict]] = mapped_column(
         JSON,
-        comment="设备配置参数"
+        comment="设备配置参数（包括认证信息、API配置等）"
     )
 
     # 设备标签（便于分类和搜索）
     tags: Mapped[Optional[str]] = mapped_column(
         String(255),
-        comment="设备标签，多个标签用逗号分隔"
+        comment="设备标签（逗号分隔字符串）"
     )
 
-    # 安装时间
-    installed_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP,
-        comment="安装时间"
-    )
-
-    # 最后维护时间
-    last_maintenance_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP,
-        comment="最后维护时间"
-    )
-
-    # 下次维护时间
-    next_maintenance_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP,
-        comment="下次维护时间"
-    )
-
-    # 保修到期时间
-    warranty_expires_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP,
-        comment="保修到期时间"
-    )
-
-    # 设备退役时间（软删除）
-    retired_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP,
-        comment="设备退役时间"
-    )
-
-    # 记录更新时间
-    updated_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="最后更新时间", init=False)
-
-    # 设备状态：active(活跃green), inactive(非活跃orange), maintenance(维护中blue), retired(已退役grey), error(故障red)
+    # 设备状态（online=在线/offline=离线）
     status: Mapped[str] = mapped_column(
         String(50), 
-        default="active", 
+        default="offline", 
         nullable=False,
-        comment="设备状态"
+        comment="设备状态（online=在线/offline=离线）"
     )
 
-    # 设备开关状态: on(开启), off(关闭), error(故障)
-    switch_status: Mapped[str] = mapped_column(
-        String(50), 
-        default="off", 
-        nullable=False,
-        comment="开关状态"
-    )
-
-    # 设备优先级：high(高), medium(中), low(低)
-    priority: Mapped[str] = mapped_column(
+    # 控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）
+    control_mode: Mapped[str] = mapped_column(
         String(20),
-        default="medium",
-        comment="设备优先级"
+        default="hybrid",
+        nullable=False,
+        comment="控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）"
     )
 
     # 记录创建和更新时间
-    created_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=lambda: datetime.now(timezone.utc), comment="创建时间", init=False)
+    # 创建时间
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="创建时间",
+        init=False
+    )
     
+    # 更新时间
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        comment="更新时间",
+        init=False
+    )
     # ORM 关系定义
-    # device_type: Mapped[Optional["DeviceType"]] = relationship(back_populates="devices", init=False)
-    # pond: Mapped[Optional["Pond"]] = relationship(back_populates="devices", init=False)
+    device_type: Mapped[Optional["DeviceType"]] = relationship(back_populates="devices", init=False)
+    pond: Mapped[Optional["Pond"]] = relationship(back_populates="devices", init=False)
+    sensor: Mapped[Optional["Sensor"]] = relationship(back_populates="device", uselist=False, init=False)
+    feeder: Mapped[Optional["Feeder"]] = relationship(back_populates="device", uselist=False, init=False)
+    camera: Mapped[Optional["Camera"]] = relationship(back_populates="device", uselist=False, init=False)
 
 
 class DeviceType(Base):
     """
-    设备类型表
-    定义不同类型的设备分类
+    设备类型字典表
+    定义设备类型和大类，避免数据冗余，便于集中管理
     """
     __tablename__ = "device_types"
+    __table_args__ = (
+        Index("idx_device_type_category", "category"),
+    )
 
     # 主键ID
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, init=False)
+
+    # 设备大类（sensor=传感器/feeder=喂食机/camera=摄像头）
+    category: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        comment="设备大类（sensor=传感器/feeder=喂食机/camera=摄像头）"
+    )
 
     # 设备类型名称
     name: Mapped[str] = mapped_column(
         String(64),
         unique=True,
         nullable=False,
-        comment="设备类型名称"
+        comment="设备类型名称（如：溶解氧传感器）"
+    )
+
+    # 设备类型代码
+    type_code: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=False,
+        comment="设备类型代码（如：DO_SENSOR_001）"
     )
 
     # 设备类型描述
@@ -221,17 +222,9 @@ class DeviceType(Base):
         comment="设备类型描述"
     )
 
-    # 设备类型代码
-    type_code: Mapped[str] = mapped_column(
-        String(64),
-        unique=True,
-        nullable=False,
-        comment="设备类型代码"
-    )
-
     # 记录创建和更新时间
     created_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=lambda: datetime.now(timezone.utc), comment="创建时间", init=False)
-    updated_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="最后更新时间", init=False)
+    updated_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间", init=False)
 
     # ORM 关系定义
-    # devices: Mapped[List["Device"]] = relationship(back_populates="device_type", cascade="all, delete-orphan", init=False)
+    devices: Mapped[List["Device"]] = relationship(back_populates="device_type", init=False)

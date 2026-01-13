@@ -18,20 +18,21 @@ from sqlalchemy import (
     TIMESTAMP,
     Index,
     Integer,
+    ForeignKey,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
 
 class Batch(Base):
     """
     批次信息表
-    存储养殖批次的基本信息，包括物种、池号、放养密度、起止日期等
+    存储养殖批次的基本信息，包括物种、养殖池、放养密度、起止日期等
     """
     __tablename__ = "batches"
     __table_args__ = (
-        Index("idx_batches_pool_dates", "pool_id", "start_date", "end_date"),
+        Index("idx_batches_pond_dates", "pond_id", "start_date", "end_date"),
     )
     
     # 批次ID（主键）
@@ -43,11 +44,12 @@ class Batch(Base):
         init=False
     )
     
-    # 池号/分区标识（必填字段）
-    pool_id: Mapped[str] = mapped_column(
-        String(64),
+    # 所属养殖池ID（外键，必填字段）
+    pond_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('ponds.id'),
         nullable=False,
-        comment="池号/分区标识"
+        comment="所属养殖池ID（FK）"
     )
     
     # 开始日期（必填字段）
@@ -119,4 +121,7 @@ class Batch(Base):
         comment="更新时间",
         init=False
     )
+    
+    # ORM 关系：关联到养殖池
+    pond: Mapped["Pond"] = relationship(back_populates="batches", init=False)
 
