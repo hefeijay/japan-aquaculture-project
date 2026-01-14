@@ -6,7 +6,8 @@ from sqlalchemy import (
     Index, 
     String, 
     TIMESTAMP, 
-    Integer, 
+    Integer,
+    BigInteger,
     ForeignKey, 
     text,
     Float
@@ -22,7 +23,21 @@ class Pond(Base):
     """ 
     __tablename__ = "ponds" 
     
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, init=False) 
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="数据库主键",
+        init=False
+    ) 
+    
+    # 养殖池业务ID（唯一标识符）
+    pond_id: Mapped[str] = mapped_column(
+        String(128),
+        unique=True,
+        nullable=False,
+        comment="养殖池业务ID（唯一标识符）"
+    )
     
     # 养殖池的唯一标识或名称，方便人类阅读 
     name: Mapped[str] = mapped_column(String(128), unique=True, comment="养殖池名称") 

@@ -22,7 +22,7 @@ from .base import Base
 class SensorReading(Base): 
     """ 
     统一传感器读数表
-    存储所有类型传感器的测量数据。pool_id为快照字段便于查询
+    存储所有类型传感器的测量数据。pond_id/type_name为快照字段便于查询
     """ 
     __tablename__ = "sensor_readings" 
     __table_args__ = ( 
@@ -54,11 +54,18 @@ class SensorReading(Base):
         comment="所属养殖池ID（FK）- 快照字段，记录数据产生时的池位"
     )
     
-    # 批次ID（FK，关联到batches表）
+    # 批次ID（FK，关联到batches表的主键id）
     batch_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        ForeignKey("batches.batch_id"),
-        comment="批次ID（FK）",
+        Integer,
+        ForeignKey("batches.id"),
+        comment="批次ID（FK，关联到batches.id主键）",
+        init=False
+    )
+    
+    # 传感器类型名称（快照字段，从 sensor_types 同步，便于查询）
+    type_name: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        comment="传感器类型名称（快照字段，如'溶解氧饱和度传感器'，从sensor_types同步）",
         init=False
     )
      

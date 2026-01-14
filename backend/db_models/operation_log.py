@@ -30,7 +30,7 @@ class OperationLog(Base):
     """
     __tablename__ = "operations_logs"
     __table_args__ = (
-        Index("idx_ol_operator_ts", "operator_id", "ts_utc"),
+        Index("idx_ol_user_ts", "user_id", "ts_utc"),
         Index("idx_ol_batch_ts", "batch_id", "ts_utc"),
         Index("idx_ol_pond_ts", "pond_id", "ts_utc"),
     )
@@ -44,18 +44,19 @@ class OperationLog(Base):
         init=False
     )
     
-    # 操作人
-    operator_id: Mapped[str] = mapped_column(
-        String(64),
+    # 操作用户ID（外键）
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user.id"),
         nullable=False,
-        comment="操作人"
+        comment="操作用户ID（FK）"
     )
     
-    # 批次ID（FK）
+    # 批次ID（FK，关联到batches表的主键id）
     batch_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        ForeignKey("batches.batch_id"),
-        comment="批次ID（FK）",
+        Integer,
+        ForeignKey("batches.id"),
+        comment="批次ID（FK，关联到batches.id主键）",
         init=False
     )
     
@@ -122,6 +123,7 @@ class OperationLog(Base):
     )
     
     # ORM 关系
+    user: Mapped["User"] = relationship(back_populates="operation_logs", init=False)
     pond: Mapped[Optional["Pond"]] = relationship(init=False)
     batch: Mapped[Optional["Batch"]] = relationship(init=False)
 

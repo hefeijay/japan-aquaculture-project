@@ -33,15 +33,24 @@ class Batch(Base):
     __tablename__ = "batches"
     __table_args__ = (
         Index("idx_batches_pond_dates", "pond_id", "start_date", "end_date"),
+        Index("idx_batches_batch_id", "batch_id"),
     )
     
-    # 批次ID（主键）
-    batch_id: Mapped[int] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
+    # 数据库主键（自增ID）
+    id: Mapped[int] = mapped_column(
+        Integer,
         primary_key=True,
         autoincrement=True,
-        comment="批次ID（主键）",
+        comment="数据库主键",
         init=False
+    )
+    
+    # 批次业务ID（唯一标识符）
+    batch_id: Mapped[str] = mapped_column(
+        String(128),
+        unique=True,
+        nullable=False,
+        comment="批次业务ID（唯一标识符，如：BATCH_2024_001）"
     )
     
     # 所属养殖池ID（外键，必填字段）

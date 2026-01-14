@@ -61,9 +61,9 @@ class ShrimpStats(Base):
     
     # 批次ID（FK）
     batch_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        ForeignKey("batches.batch_id"),
-        comment="批次ID（FK）",
+        Integer,
+        ForeignKey("batches.id"),
+        comment="批次ID（FK，关联到batches.id主键）",
         init=False
     )
     

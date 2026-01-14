@@ -62,11 +62,11 @@ class FeederLog(Base):
         comment="所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化"
     )
     
-    # 批次ID（FK）
+    # 批次ID（FK，关联到batches表的主键id）
     batch_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        ForeignKey("batches.batch_id"),
-        comment="批次ID（FK）",
+        Integer,
+        ForeignKey("batches.id"),
+        comment="批次ID（FK，关联到batches.id主键）",
         init=False
     )
     

@@ -81,6 +81,6 @@ class Sensor(Base):
 
     # ORM 关系
     device: Mapped["Device"] = relationship(back_populates="sensor", init=False)
-    sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors", init=False)
+    sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors", init=False) 
     pond: Mapped[Optional["Pond"]] = relationship(init=False)
     readings: Mapped[list["SensorReading"]] = relationship(back_populates="sensor", cascade="all, delete-orphan", init=False)
