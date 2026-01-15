@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     DEVICE_EXPERT_API_TIMEOUT: int = 60  # 设备专家API超时时间（秒）
     ENABLE_DEVICE_EXPERT: bool = True  # 是否启用设备控制专家
     
+    # 天气服务配置（OpenWeatherMap）
+    OPENWEATHER_API_KEY: Optional[str] = None  # OpenWeatherMap API Key
+    OPENWEATHER_BASE_URL: str = "https://api.openweathermap.org/data/2.5/weather"
+    WEATHER_DEFAULT_LOCATION: str = "Tsukuba"  # 默认城市
+    WEATHER_LANG: str = "zh_cn"  # 返回语言（中文）
+    ENABLE_WEATHER_SERVICE: bool = True  # 是否启用天气服务
+    
     @property
     def database_url(self) -> str:
         """构建数据库连接URL"""

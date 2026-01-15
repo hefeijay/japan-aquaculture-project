@@ -84,7 +84,7 @@ class IntentAgent:
 ❌ 任何emoji符号（如 ✅, 📊等）
 ❌ 任何表格或列表
 ❌ 多行内容
-如果无法确定，返回"其他"。
+如果意图不在上述列表中，返回"其他"。
 """
         
         config = format_config_for_llm(model_config)

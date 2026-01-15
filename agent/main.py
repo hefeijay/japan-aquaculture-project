@@ -30,6 +30,7 @@ from services.chat_history_service import (
 from services.expert_consultation_service import expert_service
 from services.device_expert_service import device_expert_service
 from services.session_service import initialize_session
+from tools.weather_tool import check_and_query_weather
 from core.constants import MsgType
 
 # 配置日志
@@ -176,7 +177,13 @@ async def chat(
         
         print(f"🎯 识别意图: {intent}")
         
-        # ===== 新增：设备控制分支 =====
+        # ===== 天气意图判断：判断是否需要查询天气，不影响原有流程 =====
+        weather_info = await check_and_query_weather(user_message)
+        if weather_info:
+            context["weather_info"] = weather_info
+            context["weather_queried"] = True
+        
+        # ===== 设备控制分支 =====
         if intent == "设备控制":
             if settings.ENABLE_DEVICE_EXPERT:
                 print("=" * 80)
@@ -695,7 +702,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     print(f"🎯 识别意图 (WebSocket): {intent}")
                     
-                    # ===== 新增：设备控制分支 (WebSocket 流式) =====
+                    # ===== 天气意图判断：判断是否需要查询天气，不影响原有流程 =====
+                    weather_info = await check_and_query_weather(user_message)
+                    if weather_info:
+                        context["weather_info"] = weather_info
+                        context["weather_queried"] = True
+                    
+                    # ===== 设备控制分支 (WebSocket 流式) =====
                     if intent == "设备控制":
                         if settings.ENABLE_DEVICE_EXPERT:
                             print("=" * 80)
