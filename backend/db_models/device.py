@@ -200,20 +200,12 @@ class DeviceType(Base):
         comment="设备大类（sensor=传感器/feeder=喂食机/camera=摄像头）"
     )
 
-    # 设备类型名称
+    # 设备类型名称（中文）
     name: Mapped[str] = mapped_column(
         String(64),
         unique=True,
         nullable=False,
-        comment="设备类型名称（如：溶解氧传感器）"
-    )
-
-    # 设备类型代码
-    type_code: Mapped[str] = mapped_column(
-        String(64),
-        unique=True,
-        nullable=False,
-        comment="设备类型代码（如：DO_SENSOR_001）"
+        comment="设备类型名称（如：溶解氧传感器、自动喂食机）"
     )
 
     # 设备类型描述

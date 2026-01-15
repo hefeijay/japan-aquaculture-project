@@ -124,10 +124,10 @@ def receive_sensor_data():
     
     请求体格式：
     {
-        "sensor_id": "sensor_001",   // 必填，传感器设备业务ID（字符串，对应devices.device_id）
+        "sensor_id": "1",            // 必填，传感器主键ID（字符串形式的整数，对应sensors.id）
         "value": 25.5,               // 必填，传感器读数值
-        "pool_id": "POND_001",       // 可选，养殖池业务ID（字符串，对应ponds.pond_id，如未提供则从sensor获取）
-        "batch_id": "BATCH_2024_001",  // 可选，批次业务编号（字符串，对应batches.batch_number）
+        "pool_id": "1",              // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id，如未提供则从sensor获取）
+        "batch_id": "1",             // 可选，批次主键ID（字符串形式的整数，对应batches.id）
         "unit": "°C",                // 可选，单位
         "timestamp": 1234567890000,  // 可选，Unix时间戳（毫秒）
         "description": "1号池温度"   // 可选，描述信息
@@ -153,13 +153,44 @@ def receive_sensor_data():
                 "error": "缺少必填字段: sensor_id, value"
             }), 400
         # 提取数据
-        sensor_device_id = str(data['sensor_id'])  # 设备业务ID（字符串）
+        sensor_id_str = str(data['sensor_id'])  # 传感器主键ID（字符串）
         value = float(data['value'])
         unit = data.get('unit')
-        batch_id = data.get('batch_id')  # 批次业务编号（字符串）
-        pond_id_str = data.get('pool_id')  # 养殖池业务ID（字符串）
+        batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
+        pond_id_str = data.get('pool_id')  # 养殖池主键ID（字符串）
         timestamp = data.get('timestamp')
         description = data.get('description')
+        
+        # 将 sensor_id 转换为整数
+        try:
+            sensor_id = int(sensor_id_str)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": f"sensor_id 必须是有效的整数: {sensor_id_str}"
+            }), 400
+        
+        # 将 pool_id 转换为整数（如果提供了）
+        pond_id = None
+        if pond_id_str is not None:
+            try:
+                pond_id = int(pond_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"pool_id 必须是有效的整数: {pond_id_str}"
+                }), 400
+        
+        # 将 batch_id 转换为整数（如果提供了）
+        batch_id = None
+        if batch_id_str is not None:
+            try:
+                batch_id = int(batch_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"batch_id 必须是有效的整数: {batch_id_str}"
+                }), 400
         
         # 时间标准化
         if timestamp:
@@ -169,26 +200,17 @@ def receive_sensor_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 检查并确保传感器记录存在（通过 device_id 查找）
+            # 检查并确保传感器记录存在（通过主键ID查找）
             from db_models.sensor import Sensor
-            from db_models.device import Device
             from db_models.pond import Pond
             from db_models.batch import Batch
             
-            # 1. 通过业务ID查找设备
-            device = session.query(Device).filter(Device.device_id == sensor_device_id).first()
-            if not device:
-                return jsonify({
-                    "success": False,
-                    "error": f"设备不存在: sensor_id={sensor_device_id}"
-                }), 404
-            
-            # 2. 通过 device.id 查找传感器
-            sensor = session.query(Sensor).filter(Sensor.device_id == device.id).first()
+            # 通过主键ID查找传感器
+            sensor = session.query(Sensor).filter(Sensor.id == sensor_id).first()
             if not sensor:
                 return jsonify({
                     "success": False,
-                    "error": f"传感器不存在: sensor_id={sensor_device_id}"
+                    "error": f"传感器不存在: sensor_id={sensor_id}"
                 }), 404
             
             # 初始化数据库ID变量
@@ -196,36 +218,32 @@ def receive_sensor_data():
             batch_db_id = None
             
             # 获取 pond_id（如果请求中没有提供，从 sensor 获取）
-            if pond_id_str is None:
+            if pond_id is None:
                 pond_db_id = sensor.pond_id
                 if pond_db_id is None:
                     return jsonify({
                         "success": False,
-                        "error": f"传感器未关联养殖池且请求中未提供 pool_id: sensor_id={sensor_device_id}"
+                        "error": f"传感器未关联养殖池且请求中未提供 pool_id: sensor_id={sensor_id}"
                     }), 400
             else:
-                # 如果提供了 pond_id（业务ID），查询对应的数据库ID
-                pond_id_str = str(pond_id_str)  # 确保是字符串
-                pond = session.query(Pond).filter(Pond.pond_id == pond_id_str).first()
+                # 如果提供了 pond_id（主键ID），验证养殖池是否存在
+                pond = session.query(Pond).filter(Pond.id == pond_id).first()
                 if not pond:
                     return jsonify({
                         "success": False,
-                        "error": f"养殖池不存在: pool_id={pond_id_str}"
+                        "error": f"养殖池不存在: pool_id={pond_id}"
                     }), 404
-                pond_db_id = pond.id  # 获取数据库ID
+                pond_db_id = pond.id  # 使用主键ID
             
-            # 如果提供了 batch_id（业务ID），确保批次存在（自动创建）
+            # 如果提供了 batch_id（主键ID），验证批次是否存在
             if batch_id is not None:
-                batch_id_str = str(batch_id)  # 确保是字符串
-                # 调用 ensure_batch_exists，如果不存在会自动创建
-                batch_db_id = ensure_batch_exists(session, batch_id_str, pond_db_id)
-                if batch_db_id is None:
+                batch = session.query(Batch).filter(Batch.id == batch_id).first()
+                if not batch:
                     return jsonify({
                         "success": False,
-                        "error": f"批次创建失败: batch_id={batch_id_str}"
-                    }), 500
-                # 重新查询 batch 对象，用于返回数据
-                batch = session.query(Batch).filter(Batch.id == batch_db_id).first()
+                        "error": f"批次不存在: batch_id={batch_id}"
+                    }), 404
+                batch_db_id = batch.id
             
             # ===== 从 sensor_type 获取类型信息（用于快照字段）=====
             sensor_type_name = None
@@ -246,10 +264,10 @@ def receive_sensor_data():
                 # 判断值是否在有效范围内
                 if valid_min is not None and value < valid_min:
                     is_anomaly = True
-                    logger.warning(f"传感器数据异常（低于最小值）: sensor_id={sensor_device_id}, value={value}, valid_min={valid_min}")
+                    logger.warning(f"传感器数据异常（低于最小值）: sensor_id={sensor_id}, value={value}, valid_min={valid_min}")
                 elif valid_max is not None and value > valid_max:
                     is_anomaly = True
-                    logger.warning(f"传感器数据异常（超过最大值）: sensor_id={sensor_device_id}, value={value}, valid_max={valid_max}")
+                    logger.warning(f"传感器数据异常（超过最大值）: sensor_id={sensor_id}, value={value}, valid_max={valid_max}")
             
             # 确定质量标记
             quality_flag = 'anomaly' if is_anomaly else 'ok'
@@ -301,13 +319,13 @@ def receive_sensor_data():
             session.add(reading)
             session.commit()
             
-            logger.info(f"传感器数据接收成功: sensor_id={sensor_device_id}, value={value}, pond_id={pond_id_str}, batch_id={batch_id if batch_db_id else None}, type_name={sensor_type_name}, quality_flag={quality_flag}")
+            logger.info(f"传感器数据接收成功: sensor_id={sensor_id}, value={value}, pond_id={pond_db_id}, batch_id={batch_db_id}, type_name={sensor_type_name}, quality_flag={quality_flag}")
             
             return jsonify({
                 "success": True,
                 "data": {
                     "id": reading.id,
-                    "sensor_id": sensor_device_id,
+                    "sensor_id": sensor_id,
                     "value": reading.value,
                     "quality_flag": reading.quality_flag
                 },
@@ -335,9 +353,9 @@ def receive_feeder_data():
     
     请求体格式：
     {
-        "feeder_id": "feeder_001",  // 必填，喂食机设备业务ID（字符串，对应devices.device_id）
-        "batch_id": "BATCH_2024_001",  // 可选，批次业务编号（字符串，对应batches.batch_number）
-        "pool_id": "POND_001",  // 可选，养殖池业务ID（字符串，对应ponds.pond_id）
+        "feeder_id": "1",  // 必填，喂食机主键ID（字符串形式的整数，对应feeders.id）
+        "batch_id": "1",  // 可选，批次主键ID（字符串形式的整数，对应batches.id）
+        "pool_id": "1",  // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id）
         "feed_amount_g": 500.0,
         "run_time_s": 120,
         "status": "ok",  // ok/warning/error
@@ -362,15 +380,46 @@ def receive_feeder_data():
             }), 400
         
         # 提取数据
-        feeder_device_id = str(data['feeder_id'])  # 设备业务ID（字符串）
-        batch_id = data.get('batch_id')  # 批次业务编号（字符串）
-        pond_id_str = data.get('pool_id')  # 养殖池业务ID（字符串）
+        feeder_id_str = str(data['feeder_id'])  # 喂食机主键ID（字符串）
+        batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
+        pond_id_str = data.get('pool_id')  # 养殖池主键ID（字符串）
         feed_amount_g = data.get('feed_amount_g')
         run_time_s = data.get('run_time_s')
         status = data.get('status', 'ok')
         leftover_estimate_g = data.get('leftover_estimate_g')
         timestamp = data.get('timestamp')
         notes = data.get('notes')
+        
+        # 将 feeder_id 转换为整数
+        try:
+            feeder_id = int(feeder_id_str)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": f"feeder_id 必须是有效的整数: {feeder_id_str}"
+            }), 400
+        
+        # 将 pool_id 转换为整数（如果提供了）
+        pond_id = None
+        if pond_id_str is not None:
+            try:
+                pond_id = int(pond_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"pool_id 必须是有效的整数: {pond_id_str}"
+                }), 400
+        
+        # 将 batch_id 转换为整数（如果提供了）
+        batch_id = None
+        if batch_id_str is not None:
+            try:
+                batch_id = int(batch_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"batch_id 必须是有效的整数: {batch_id_str}"
+                }), 400
         
         # 时间标准化
         if timestamp:
@@ -380,26 +429,17 @@ def receive_feeder_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 检查并确保喂食机记录存在（通过 device_id 查找）
+            # 检查并确保喂食机记录存在（通过主键ID查找）
             from db_models.feeder import Feeder
-            from db_models.device import Device
             from db_models.pond import Pond
             from db_models.batch import Batch
             
-            # 1. 通过业务ID查找设备
-            device = session.query(Device).filter(Device.device_id == feeder_device_id).first()
-            if not device:
-                return jsonify({
-                    "success": False,
-                    "error": f"设备不存在: feeder_id={feeder_device_id}"
-                }), 404
-            
-            # 2. 通过 device.id 查找喂食机
-            feeder = session.query(Feeder).filter(Feeder.device_id == device.id).first()
+            # 通过主键ID查找喂食机
+            feeder = session.query(Feeder).filter(Feeder.id == feeder_id).first()
             if not feeder:
                 return jsonify({
                     "success": False,
-                    "error": f"喂食机不存在: feeder_id={feeder_device_id}"
+                    "error": f"喂食机不存在: feeder_id={feeder_id}"
                 }), 404
             
             # 初始化数据库ID变量
@@ -407,36 +447,32 @@ def receive_feeder_data():
             batch_db_id = None
             
             # 获取 pond_id（如果请求中没有提供，从 feeder 获取）
-            if pond_id_str is None:
+            if pond_id is None:
                 pond_db_id = feeder.pond_id
                 if pond_db_id is None:
                     return jsonify({
                         "success": False,
-                        "error": f"喂食机未关联养殖池且请求中未提供 pool_id: feeder_id={feeder_device_id}"
+                        "error": f"喂食机未关联养殖池且请求中未提供 pool_id: feeder_id={feeder_id}"
                     }), 400
             else:
-                # 如果提供了 pond_id（业务ID），查询对应的数据库ID
-                pond_id_str = str(pond_id_str)  # 确保是字符串
-                pond = session.query(Pond).filter(Pond.pond_id == pond_id_str).first()
+                # 如果提供了 pond_id（主键ID），验证养殖池是否存在
+                pond = session.query(Pond).filter(Pond.id == pond_id).first()
                 if not pond:
                     return jsonify({
                         "success": False,
-                        "error": f"养殖池不存在: pool_id={pond_id_str}"
+                        "error": f"养殖池不存在: pool_id={pond_id}"
                     }), 404
-                pond_db_id = pond.id  # 获取数据库ID
+                pond_db_id = pond.id  # 使用主键ID
             
-            # 如果提供了 batch_id（业务ID），确保批次存在（自动创建）
+            # 如果提供了 batch_id（主键ID），验证批次是否存在
             if batch_id is not None:
-                batch_id_str = str(batch_id)  # 确保是字符串
-                # 调用 ensure_batch_exists，如果不存在会自动创建
-                batch_db_id = ensure_batch_exists(session, batch_id_str, pond_db_id)
-                if batch_db_id is None:
+                batch = session.query(Batch).filter(Batch.id == batch_id).first()
+                if not batch:
                     return jsonify({
                         "success": False,
-                        "error": f"批次创建失败: batch_id={batch_id_str}"
-                    }), 500
-                # 重新查询 batch 对象，用于返回数据
-                batch = session.query(Batch).filter(Batch.id == batch_db_id).first()
+                        "error": f"批次不存在: batch_id={batch_id}"
+                    }), 404
+                batch_db_id = batch.id
             
             # 生成校验和
             checksum_data = {
@@ -474,13 +510,13 @@ def receive_feeder_data():
             session.add(feeder_log)
             session.commit()
             
-            logger.info(f"喂食机数据接收成功: feeder_id={feeder_device_id}, feed_amount_g={feed_amount_g}, pond_id={pond_id_str}, batch_id={batch_id if batch_db_id else None}")
+            logger.info(f"喂食机数据接收成功: feeder_id={feeder_id}, feed_amount_g={feed_amount_g}, pond_id={pond_db_id}, batch_id={batch_db_id}")
             
             return jsonify({
                 "success": True,
                 "data": {
                     "id": feeder_log.id,
-                    "feeder_id": feeder_device_id,
+                    "feeder_id": feeder_id,
                     "status": feeder_log.status
                 },
                 "timestamp": int(time.time() * 1000)
@@ -506,10 +542,10 @@ def receive_operation_data():
     
     请求体格式：
     {
-        "user_id": "user001",  // 用户业务ID（字符串，对应user.user_id）
+        "user_id": "1",  // 用户主键ID（字符串形式的整数，对应users.id）
         "action_type": "投料",
-        "batch_id": "BATCH_2024_001",  // 可选，批次业务编号（字符串，对应batches.batch_number）
-        "pool_id": "POND_001",  // 可选，养殖池业务ID（字符串，对应ponds.pond_id）
+        "batch_id": "1",  // 可选，批次主键ID（字符串形式的整数，对应batches.id）
+        "pool_id": "1",  // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id）
         "remarks": "正常投喂操作",  // 可选
         "attachment_uri": "s3://bucket/file.pdf",  // 可选
         "timestamp": 1234567890000  // Unix时间戳（毫秒），可选
@@ -531,13 +567,44 @@ def receive_operation_data():
             }), 400
         
         # 提取数据
-        user_id_str = str(data['user_id'])  # 用户业务ID（字符串）
+        user_id_str = str(data['user_id'])  # 用户主键ID（字符串）
         action_type = data['action_type']
-        batch_id = data.get('batch_id')  # 批次业务编号（字符串，对应batches.batch_number）
-        pond_id_str = data.get('pool_id')  # 养殖池业务ID（字符串）
+        batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
+        pond_id_str = data.get('pool_id')  # 养殖池主键ID（字符串）
         remarks = data.get('remarks')
         attachment_uri = data.get('attachment_uri')
         timestamp = data.get('timestamp')
+        
+        # 将 user_id 转换为整数
+        try:
+            user_id = int(user_id_str)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": f"user_id 必须是有效的整数: {user_id_str}"
+            }), 400
+        
+        # 将 pool_id 转换为整数（如果提供了）
+        pond_id = None
+        if pond_id_str is not None:
+            try:
+                pond_id = int(pond_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"pool_id 必须是有效的整数: {pond_id_str}"
+                }), 400
+        
+        # 将 batch_id 转换为整数（如果提供了）
+        batch_id = None
+        if batch_id_str is not None:
+            try:
+                batch_id = int(batch_id_str)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "error": f"batch_id 必须是有效的整数: {batch_id_str}"
+                }), 400
         
         # 时间标准化
         if timestamp:
@@ -547,44 +614,40 @@ def receive_operation_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 验证用户是否存在（通过业务ID查询）
+            # 验证用户是否存在（通过主键ID查询）
             from db_models.user import User
-            user = session.query(User).filter(User.user_id == user_id_str).first()
+            user = session.query(User).filter(User.id == user_id).first()
             if not user:
                 return jsonify({
                     "success": False,
-                    "error": f"用户不存在: user_id={user_id_str}"
+                    "error": f"用户不存在: user_id={user_id}"
                 }), 404
             
             # 初始化数据库ID变量
             pond_db_id = None
             batch_db_id = None
             
-            # 如果提供了 pond_id（业务ID），查询对应的数据库ID
-            if pond_id_str is not None:
+            # 如果提供了 pond_id（主键ID），验证养殖池是否存在
+            if pond_id is not None:
                 from db_models.pond import Pond
-                pond_id_str = str(pond_id_str)  # 确保是字符串
-                pond = session.query(Pond).filter(Pond.pond_id == pond_id_str).first()
+                pond = session.query(Pond).filter(Pond.id == pond_id).first()
                 if not pond:
                     return jsonify({
                         "success": False,
-                        "error": f"养殖池不存在: pond_id={pond_id_str}"
+                        "error": f"养殖池不存在: pond_id={pond_id}"
                     }), 404
-                pond_db_id = pond.id  # 获取数据库ID
+                pond_db_id = pond.id  # 使用主键ID
             
-            # 如果提供了 batch_id（业务ID），确保批次存在（自动创建）
+            # 如果提供了 batch_id（主键ID），验证批次是否存在
             if batch_id is not None:
                 from db_models.batch import Batch
-                batch_id_str = str(batch_id)  # 确保是字符串
-                # 调用 ensure_batch_exists，如果不存在会自动创建
-                batch_db_id = ensure_batch_exists(session, batch_id_str, pond_db_id)
-                if batch_db_id is None:
+                batch = session.query(Batch).filter(Batch.id == batch_id).first()
+                if not batch:
                     return jsonify({
                         "success": False,
-                        "error": f"批次创建失败: batch_id={batch_id_str}"
-                    }), 500
-                # 重新查询 batch 对象，用于返回数据
-                batch = session.query(Batch).filter(Batch.id == batch_db_id).first()
+                        "error": f"批次不存在: batch_id={batch_id}"
+                    }), 404
+                batch_db_id = batch.id
             
             # 创建对象（只传入 init=True 的字段）
             # 使用数据库主键而不是业务ID
@@ -608,22 +671,22 @@ def receive_operation_data():
             session.add(operation_log)
             session.commit()
             
-            # 构建返回数据（返回业务ID而不是数据库ID）
+            # 构建返回数据（返回数据库主键ID）
             result_data = {
                 "id": operation_log.id,
-                "user_id": user.user_id,  # 返回业务ID
+                "user_id": user.id,  # 返回数据库主键ID
                 "action_type": operation_log.action_type
             }
             
-            # 如果有批次，返回批次业务ID
-            if batch_db_id and batch:
-                result_data["batch_id"] = batch.batch_id
+            # 如果有批次，返回批次主键ID
+            if batch_db_id:
+                result_data["batch_id"] = batch_db_id
             
-            # 如果有养殖池，返回养殖池业务ID
-            if pond_db_id and pond:
-                result_data["pond_id"] = pond.pond_id
+            # 如果有养殖池，返回养殖池主键ID
+            if pond_db_id:
+                result_data["pond_id"] = pond_db_id
             
-            logger.info(f"操作日志接收成功: user_id={user_id_str}, username={user.username}, action_type={action_type}, pond_id={pond_id_str}, batch_id={batch_id if batch_db_id else None}")
+            logger.info(f"操作日志接收成功: user_id={user_id}, username={user.username}, action_type={action_type}, pond_id={pond_db_id}, batch_id={batch_db_id}")
             
             return jsonify({
                 "success": True,

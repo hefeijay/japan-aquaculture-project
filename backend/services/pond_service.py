@@ -68,8 +68,9 @@ class PondService:
                 for pond in ponds:
                     # 获取当前活跃批次的物种类型
                     species_list = []
+                    # 修正：Batch.pond_id 是 Integer 类型，应该直接与 pond.id 比较
                     batch = session.query(Batch)\
-                        .filter(Batch.pool_id == str(pond.id))\
+                        .filter(Batch.pond_id == pond.id)\
                         .filter(Batch.end_date.is_(None))\
                         .order_by(Batch.start_date.desc())\
                         .first()
@@ -88,6 +89,7 @@ class PondService:
                     }
                     pond_list.append(pond_info)
                 
+                logger.info(f"成功获取 {len(pond_list)} 个池塘列表")
                 return pond_list
                 
         except Exception as e:
@@ -100,7 +102,7 @@ class PondService:
         获取池塘详细信息
         
         Args:
-            pond_id: 池塘ID（字符串）
+            pond_id: 池塘主键ID（字符串格式的整数，如 "1", "2"）
             
         Returns:
             池塘详情字典，包含池塘信息、传感器数据、批次信息、虾类统计等
@@ -109,15 +111,16 @@ class PondService:
             with db_session_factory() as session:
                 pond_id_int = int(pond_id)
                 
-                # 1. 获取池塘基本信息
+                # 1. 获取池塘基本信息（通过主键ID查询）
                 pond = session.query(Pond).filter(Pond.id == pond_id_int).first()
                 if not pond:
                     logger.warning(f"池塘 {pond_id} 不存在")
                     return None
                 
                 # 2. 获取当前活跃批次信息
+                # 修正：Batch.pond_id 是 Integer 类型
                 batch = session.query(Batch)\
-                    .filter(Batch.pool_id == pond_id)\
+                    .filter(Batch.pond_id == pond_id_int)\
                     .filter(Batch.end_date.is_(None))\
                     .order_by(Batch.start_date.desc())\
                     .first()
@@ -125,7 +128,7 @@ class PondService:
                 # 如果没有活跃批次，获取最新批次
                 if not batch:
                     batch = session.query(Batch)\
-                        .filter(Batch.pool_id == pond_id)\
+                        .filter(Batch.pond_id == pond_id_int)\
                         .order_by(Batch.start_date.desc())\
                         .first()
                 
@@ -202,10 +205,10 @@ class PondService:
     def update_pond_detail(cls, pond_id: str, detail_data: Dict[str, Any]) -> tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         更新池塘详细信息（支持部分更新）
-        如果池塘不存在，会自动创建新记录
+        池塘必须已存在，否则返回错误
         
         Args:
-            pond_id: 池塘ID（字符串），如果池塘不存在会自动创建
+            pond_id: 池塘主键ID（字符串格式的整数，如 "1", "2"）
             detail_data: 要更新的数据字典，包含以下可选字段：
                 - pond: {name, area, species: {type, number}}
                 - sensor: {water_temperature, pH, Dissolved_oxygen, liquid_level, Turbidity}
@@ -219,72 +222,29 @@ class PondService:
             with db_session_factory() as session:
                 pond_id_int = int(pond_id)
                 
-                # 1. 获取或创建池塘基本信息
+                # 1. 获取池塘基本信息（通过主键ID查询）
                 pond = session.query(Pond).filter(Pond.id == pond_id_int).first()
-                is_new_pond = False
                 
                 if not pond:
-                    # 池塘不存在，创建新记录
-                    # 生成默认名称（如果请求中没有提供）
-                    pond_name = None
-                    if "pond" in detail_data and "name" in detail_data["pond"]:
-                        pond_name = detail_data["pond"]["name"]
-                    elif "environment" in detail_data and "region" in detail_data["environment"]:
-                        # 使用地区信息生成名称
-                        region = detail_data["environment"]["region"]
-                        pond_name = f"{region}-{pond_id}号养殖池"
-                    else:
-                        # 默认名称
-                        pond_name = f"{pond_id}号养殖池"
-                    
-                    # 检查名称是否已存在，如果存在则添加后缀
-                    existing_pond = session.query(Pond).filter(Pond.name == pond_name).first()
-                    if existing_pond:
-                        counter = 1
-                        while True:
-                            new_name = f"{pond_name}-{counter}"
-                            if not session.query(Pond).filter(Pond.name == new_name).first():
-                                pond_name = new_name
-                                break
-                            counter += 1
-                    
-                    # 从请求数据中获取字段值（如果提供）
-                    pond_data = detail_data.get("pond", {})
-                    pond_location = None
-                    if "environment" in detail_data and "region" in detail_data["environment"]:
-                        pond_location = detail_data["environment"]["region"]
-                    elif "location" in pond_data:
-                        pond_location = pond_data["location"]
-                    
-                    pond_area = pond_data.get("area") if "area" in pond_data else None
-                    pond_count = None
-                    if "species" in pond_data and "number" in pond_data["species"]:
-                        pond_count = pond_data["species"]["number"]
-                    
-                    pond_description = pond_data.get("description") if "description" in pond_data else None
-                    
-                    # 创建新池塘
-                    # 由于 Pond 使用 MappedAsDataclass，需要在构造函数中提供所有必需字段
-                    pond = Pond(
-                        name=pond_name,
-                        location=pond_location,
-                        area=pond_area,
-                        count=pond_count,
-                        description=pond_description
-                    )
-                    # 设置 ID（如果数据库允许手动指定自增主键）
-                    pond.id = pond_id_int
-                    
-                    session.add(pond)
-                    session.flush()  # 刷新以获取ID
-                    is_new_pond = True
-                    logger.info(f"创建新池塘: ID={pond_id_int}, name={pond_name}")
+                    # 池塘不存在，返回错误
+                    logger.warning(f"池塘 {pond_id} 不存在，无法更新")
+                    return False, f"池塘 {pond_id} 不存在", None
                 
                 updated_fields = []
                 
                 # 2. 更新池塘基本信息 (pond)
                 if "pond" in detail_data:
                     pond_info = detail_data["pond"]
+                    
+                    # 更新名称
+                    if "name" in pond_info:
+                        pond.name = pond_info["name"]
+                        updated_fields.append("name")
+                    
+                    # 更新描述
+                    if "description" in pond_info:
+                        pond.description = pond_info["description"]
+                        updated_fields.append("description")
                     
                     # 更新面积
                     if "area" in pond_info:
@@ -300,15 +260,16 @@ class PondService:
                     if "species" in pond_info and "type" in pond_info["species"]:
                         species_type = pond_info["species"]["type"]
                         # 获取当前活跃批次或最新批次
+                        # 修正：Batch.pond_id 是 Integer 类型
                         batch = session.query(Batch)\
-                            .filter(Batch.pool_id == pond_id)\
+                            .filter(Batch.pond_id == pond_id_int)\
                             .filter(Batch.end_date.is_(None))\
                             .order_by(Batch.start_date.desc())\
                             .first()
                         
                         if not batch:
                             batch = session.query(Batch)\
-                                .filter(Batch.pool_id == pond_id)\
+                                .filter(Batch.pond_id == pond_id_int)\
                                 .order_by(Batch.start_date.desc())\
                                 .first()
                         
@@ -338,12 +299,13 @@ class PondService:
                     }
                     
                     # 获取当前批次ID（用于插入传感器读数）
+                    # 修正：Batch.pond_id 是 Integer 类型
                     batch = session.query(Batch)\
-                        .filter(Batch.pool_id == pond_id)\
+                        .filter(Batch.pond_id == pond_id_int)\
                         .filter(Batch.end_date.is_(None))\
                         .order_by(Batch.start_date.desc())\
                         .first()
-                    batch_id = batch.batch_id if batch else None
+                    batch_id = batch.id if batch else None
                     
                     now = datetime.now()
                     
@@ -369,6 +331,7 @@ class PondService:
                             # 只传入 init=True 的必需参数（sensor_id 和 value）
                             new_reading = SensorReading(
                                 sensor_id=matched_sensor.id,
+                                pond_id=pond_id_int,
                                 value=float(value)
                             )
                             # 设置 init=False 的字段（通过属性赋值）
@@ -376,7 +339,6 @@ class PondService:
                             new_reading.ts_utc = now
                             if batch_id:
                                 new_reading.batch_id = batch_id
-                            new_reading.pool_id = pond_id
                             
                             # 从数据库查询 type_name 对应的 metric
                             sensor_type_name = matched_sensor.sensor_type.type_name
@@ -422,12 +384,7 @@ class PondService:
                 # 提交事务
                 session.commit()
                 
-                if is_new_pond:
-                    logger.info(f"成功创建新池塘 {pond_id}，并更新了 {len(updated_fields)} 个字段")
-                    # 返回创建后的数据
-                    updated_detail = cls.get_pond_detail(pond_id)
-                    return True, f"成功创建新池塘并更新 {len(updated_fields)} 个字段", updated_detail
-                elif updated_fields:
+                if updated_fields:
                     logger.info(f"成功更新池塘 {pond_id} 的以下字段: {', '.join(updated_fields)}")
                     # 返回更新后的数据
                     updated_detail = cls.get_pond_detail(pond_id)

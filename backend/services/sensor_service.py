@@ -194,7 +194,7 @@ class SensorService:
             return False
     
     @classmethod
-    def get_latest_sensor_readings_by_metric(cls, limit: int = 24) -> Dict[str, List[Dict[str, Any]]]:
+    def get_latest_sensor_readings_by_metric(cls, limit: int = 24) -> Dict[str, Dict[str, Any]]:
         """
         获取 sensor_types 表中每个 metric 在 sensor_readings 表中相同 metric 值的最新 N 条记录
         
@@ -202,7 +202,7 @@ class SensorService:
             limit: 每个 metric 获取的最新记录数，默认24条
             
         Returns:
-            按 metric 分组的读数数据字典，格式：{metric: [reading_info, ...]}
+            按 metric 分组的读数数据字典，格式：{metric: {"readings": [...], "valid_min": x, "valid_max": x}}
         """
         try:
             with db_session_factory() as session:
@@ -214,16 +214,19 @@ class SensorService:
                 
                 grouped_readings = {}
                 
-                # 对每个 metric，获取最新的 N 条记录
+                # 对每个 metric，通过 JOIN 获取最新的 N 条记录
                 for sensor_type in sensor_types:
                     metric = sensor_type.metric
                     if not metric:
                         continue
                     
-                    # 获取该 metric 的最新 N 条记录
+                    # 通过 JOIN 查询该 metric 对应的所有读数
+                    # sensor_readings → sensors → sensor_types
                     # 使用 COALESCE 优先使用 ts_utc，如果为空则使用 recorded_at，再为空则使用 created_at
                     readings = session.query(SensorReading)\
-                        .filter(SensorReading.metric == metric)\
+                        .join(Sensor, SensorReading.sensor_id == Sensor.id)\
+                        .join(SensorType, Sensor.sensor_type_id == SensorType.id)\
+                        .filter(SensorType.metric == metric)\
                         .filter(or_(
                             SensorReading.recorded_at.isnot(None),
                             SensorReading.ts_utc.isnot(None),
@@ -248,27 +251,36 @@ class SensorService:
                             "value": reading.value,
                             "recorded_at": timestamp.isoformat() if timestamp else None,
                             "type_name": reading.type_name or sensor_type.type_name,
-                            "metric": reading.metric or metric,
+                            "metric": metric,
                             "unit": reading.unit or sensor_type.unit,
                             "description": reading.description or sensor_type.description
                         }
                         reading_list.append(reading_info)
                     
+                    # 构建包含阈值信息的数据结构
+                    metric_data = {
+                        "readings": reading_list,
+                        "valid_min": float(sensor_type.valid_min) if sensor_type.valid_min is not None else None,
+                        "valid_max": float(sensor_type.valid_max) if sensor_type.valid_max is not None else None,
+                        "unit": sensor_type.unit,
+                        "type_name": sensor_type.type_name
+                    }
+                    
                     # 使用 metric 作为 key，如果 metric 已存在则合并（去重）
                     if metric in grouped_readings:
                         # 合并并去重（按 recorded_at）
-                        existing_dict = {r["recorded_at"]: r for r in grouped_readings[metric]}
+                        existing_dict = {r["recorded_at"]: r for r in grouped_readings[metric]["readings"]}
                         for r in reading_list:
                             if r["recorded_at"] and r["recorded_at"] not in existing_dict:
                                 existing_dict[r["recorded_at"]] = r
                         # 按时间排序并限制数量
-                        grouped_readings[metric] = sorted(
+                        grouped_readings[metric]["readings"] = sorted(
                             existing_dict.values(),
                             key=lambda x: x["recorded_at"] if x["recorded_at"] else "",
                             reverse=True
                         )[:limit]
                     else:
-                        grouped_readings[metric] = reading_list
+                        grouped_readings[metric] = metric_data
                 
                 return grouped_readings
                 
