@@ -28,6 +28,7 @@ from services.chat_history_service import (
     clear_history,
 )
 from services.expert_consultation_service import expert_service
+from services.device_expert_service import device_expert_service
 from services.session_service import initialize_session
 from core.constants import MsgType
 
@@ -173,6 +174,99 @@ async def chat(
             history=history,
         )
         
+        print(f"🎯 识别意图: {intent}")
+        
+        # ===== 新增：设备控制分支 =====
+        if intent == "设备控制":
+            if settings.ENABLE_DEVICE_EXPERT:
+                print("=" * 80)
+                print("🤖 检测到设备控制请求，调用设备管理专家...")
+                print("=" * 80)
+                
+                # 直接调用设备专家，不走 query_rewriter 和 routing_agent
+                device_response = await device_expert_service.consult(
+                    query=user_message,  # 直接使用原始问题
+                    session_id=session_id,
+                    context=context
+                )
+                
+                if device_response.get("success"):
+                    # 提取设备专家的回答
+                    result = device_response.get("result", {})
+                    messages = result.get("messages", [])
+                    if messages:
+                        response_content = messages[0].get("content", "设备操作完成")
+                    else:
+                        response_content = "设备操作完成"
+                    
+                    print(f"✅ 设备操作完成: {response_content[:100]}...")
+                    
+                    # 保存 AI 回答（设备控制专用字段）
+                    save_message(
+                        session_id=session_id,
+                        role="assistant",
+                        message=response_content,
+                        intent=intent,
+                        metadata={
+                            "device_expert_used": True,
+                            "device_type": device_response.get("device_type"),
+                            "success": True,
+                        },
+                    )
+                    
+                    return {
+                        "status": "success",
+                        "response": response_content,
+                        "intent": intent,
+                        "device_expert_used": True,
+                        "device_type": device_response.get("device_type"),
+                        "session_id": session_id,
+                        "history_count": len(history) + 2,
+                    }
+                else:
+                    # 设备专家失败
+                    error = device_response.get("error", "未知错误")
+                    response_content = f"抱歉，设备操作失败：{error}"
+                    print(f"❌ 设备操作失败: {error}")
+                    
+                    save_message(
+                        session_id=session_id,
+                        role="assistant",
+                        message=response_content,
+                        intent=intent,
+                        metadata={
+                            "device_expert_used": True,
+                            "success": False,
+                            "error": error,
+                        },
+                    )
+                    
+                    return {
+                        "status": "error",
+                        "response": response_content,
+                        "intent": intent,
+                        "device_expert_used": True,
+                        "error": error,
+                        "session_id": session_id,
+                        "history_count": len(history) + 2,
+                    }
+            else:
+                response_content = "设备控制功能未启用，请联系管理员"
+                save_message(
+                    session_id=session_id,
+                    role="assistant",
+                    message=response_content,
+                    intent=intent,
+                )
+                return {
+                    "status": "error",
+                    "response": response_content,
+                    "intent": intent,
+                    "session_id": session_id,
+                    "history_count": len(history) + 2,
+                }
+        
+        # ===== 原有流程（保持不变）=====
         # 3. 根据意图判断是否需要专家，如果需要则进行查询重写
         processed_query = user_message  # 默认使用原始问题
         needs_expert_by_intent = False
@@ -206,6 +300,15 @@ async def chat(
             intent=intent,
             context=context,
         )
+        
+        # 打印路由决策结果（调试用）
+        print("=" * 80)
+        print("🔀 路由决策结果:")
+        print(f"   Decision: {route_decision.get('decision')}")
+        print(f"   Reason: {route_decision.get('reason')}")
+        print(f"   needs_expert: {route_decision.get('needs_expert')}")
+        print(f"   needs_data: {route_decision.get('needs_data')}")
+        print("=" * 80)
         
         # 4. 根据路由决策执行操作
         response_content = ""
@@ -590,6 +693,133 @@ async def websocket_endpoint(websocket: WebSocket):
                         history=history,
                     )
                     
+                    print(f"🎯 识别意图 (WebSocket): {intent}")
+                    
+                    # ===== 新增：设备控制分支 (WebSocket 流式) =====
+                    if intent == "设备控制":
+                        if settings.ENABLE_DEVICE_EXPERT:
+                            print("=" * 80)
+                            print("🤖 检测到设备控制请求 (WebSocket)，调用设备管理专家...")
+                            print("=" * 80)
+                            
+                            # 定义流式回调函数
+                            async def device_stream_callback(chunk: str):
+                                """设备专家流式回调函数，转发消息块给前端"""
+                                # 发送流式消息块
+                                stream_response = {
+                                    "type": MsgType.STREAM_CHUNK,
+                                    "data": {
+                                        "session_id": session_id,
+                                        "content": chunk,
+                                        "event": "content",
+                                        "message_id": assistant_message_id,
+                                        "role": "assistant",
+                                        "timestamp": assistant_timestamp,
+                                        "type": "stream_chunk",
+                                    }
+                                }
+                                await websocket.send_text(json.dumps(stream_response, ensure_ascii=False))
+                            
+                            # 发送流式输出开始事件
+                            import uuid
+                            assistant_message_id = str(uuid.uuid4())
+                            assistant_timestamp = int(datetime.now().timestamp())
+                            
+                            stream_start_response = {
+                                "type": MsgType.STREAM_CHUNK,
+                                "data": {
+                                    "session_id": session_id,
+                                    "content": "",
+                                    "event": "start",
+                                    "message_id": assistant_message_id,
+                                    "role": "assistant",
+                                    "timestamp": assistant_timestamp,
+                                    "type": "stream_chunk",
+                                }
+                            }
+                            await websocket.send_text(json.dumps(stream_start_response, ensure_ascii=False))
+                            logger.debug(f"发送流式输出开始事件: message_id={assistant_message_id}")
+                            
+                            # 调用设备专家（流式）
+                            device_response = await device_expert_service.consult_stream(
+                                query=user_message,
+                                session_id=session_id,
+                                context=context,
+                                stream_callback=device_stream_callback,
+                            )
+                            
+                            # 发送流式输出结束事件
+                            stream_end_response = {
+                                "type": MsgType.STREAM_CHUNK,
+                                "data": {
+                                    "session_id": session_id,
+                                    "content": "",
+                                    "event": "end",
+                                    "message_id": assistant_message_id,
+                                    "role": "assistant",
+                                    "timestamp": int(datetime.now().timestamp()),
+                                    "type": "stream_chunk",
+                                }
+                            }
+                            await websocket.send_text(json.dumps(stream_end_response, ensure_ascii=False))
+                            logger.debug(f"发送流式输出结束事件: message_id={assistant_message_id}")
+                            
+                            # 提取最终回答内容
+                            if device_response.get("success"):
+                                result = device_response.get("result", {})
+                                messages = result.get("messages", [])
+                                assistant_content = messages[0].get("content", "设备操作完成") if messages else "设备操作完成"
+                                
+                                print(f"✅ 设备操作完成 (WebSocket): {assistant_content[:100]}...")
+                                
+                                # 保存 AI 回答（设备控制专用字段）
+                                save_message(
+                                    session_id=session_id,
+                                    role="assistant",
+                                    message=assistant_content,
+                                    intent=intent,
+                                    metadata={
+                                        "device_expert_used": True,
+                                        "device_type": device_response.get("device_type"),
+                                        "success": True,
+                                    },
+                                )
+                            else:
+                                error = device_response.get("error", "未知错误")
+                                assistant_content = f"抱歉，设备操作失败：{error}"
+                                print(f"❌ 设备操作失败 (WebSocket): {error}")
+                                
+                                save_message(
+                                    session_id=session_id,
+                                    role="assistant",
+                                    message=assistant_content,
+                                    intent=intent,
+                                    metadata={
+                                        "device_expert_used": True,
+                                        "success": False,
+                                        "error": error,
+                                    },
+                                )
+                            
+                            # 设备控制分支处理完成，跳过原有流程
+                            continue
+                        else:
+                            # 设备控制功能未启用
+                            error_msg = "设备控制功能未启用，请联系管理员"
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "error": error_msg
+                            }, ensure_ascii=False))
+                            
+                            save_message(
+                                session_id=session_id,
+                                role="assistant",
+                                message=error_msg,
+                                intent=intent,
+                            )
+                            continue
+                    
+                    # ===== 原有流程（保持不变）=====
                     # 3. 根据意图判断是否需要专家，如果需要则进行查询重写
                     processed_query = user_message  # 默认使用原始问题
                     needs_expert_by_intent = False
@@ -623,6 +853,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         intent=intent,
                         context=context,
                     )
+                    
+                    # 打印路由决策结果（调试用）
+                    print("=" * 80)
+                    print("🔀 路由决策结果 (WebSocket):")
+                    print(f"   Decision: {route_decision.get('decision')}")
+                    print(f"   Reason: {route_decision.get('reason')}")
+                    print(f"   needs_expert: {route_decision.get('needs_expert')}")
+                    print(f"   needs_data: {route_decision.get('needs_data')}")
+                    print("=" * 80)
                     
                     # 4. 根据路由决策执行操作
                     expert_response = None

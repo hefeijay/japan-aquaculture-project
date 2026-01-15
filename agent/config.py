@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     EXPERT_API_TIMEOUT: int = 60  # 专家API超时时间（秒），SSE流式响应需要更长时间
     ENABLE_EXPERT_CONSULTATION: bool = True  # 是否启用专家咨询
     
+    # 外部设备控制专家服务配置
+    DEVICE_EXPERT_API_BASE_URL: Optional[str] = "http://localhost:5004"  # 设备专家API基础地址，默认: "http://localhost:8001"
+    DEVICE_EXPERT_API_TIMEOUT: int = 60  # 设备专家API超时时间（秒）
+    ENABLE_DEVICE_EXPERT: bool = True  # 是否启用设备控制专家
+    
     @property
     def database_url(self) -> str:
         """构建数据库连接URL"""

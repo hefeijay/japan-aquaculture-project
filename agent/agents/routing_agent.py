@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 
 from .llm_utils import execute_llm_call, LLMConfig, format_messages_for_llm, format_config_for_llm
 from langchain_core.messages import HumanMessage
+from json_repair import repair_json
 
 logger = logging.getLogger(__name__)
 
@@ -75,18 +76,48 @@ class RoutingAgent:
         try:
             response_content, stats = await execute_llm_call(messages, config)
             
-            # 尝试解析 JSON（简化版，实际应该用 json.loads）
+            # 调试：打印原始响应
+            print(f"🔍 RoutingAgent 原始响应: {response_content}")
+            
+            # 尝试解析 JSON
             import json
+            import re
             try:
-                decision = json.loads(response_content)
+                # 1. 移除 markdown 代码块标记
+                cleaned = response_content.strip()
+                if "```json" in cleaned or "```" in cleaned:
+                    cleaned = re.sub(r'```json\s*|\s*```', '', cleaned)
+                    cleaned = cleaned.strip()
+                
+                # print(f"🔍 清洗后的内容: {cleaned[:200]}")
+                
+                # 2. 尝试直接用 json.loads 解析
+                try:
+                    decision = json.loads(cleaned)
+                    print(f"✅ JSON 解析成功（json.loads）")
+                except json.JSONDecodeError as e:
+                    print(f"⚠️ json.loads 失败: {e}, 尝试 repair_json")
+                    # 如果 json.loads 失败，尝试使用 repair_json
+                    try:
+                        decision = repair_json(cleaned, return_objects=True)  # 注意是 return_objects 不是 return_object
+                        print(f"✅ JSON 解析成功（repair_json）")
+                    except Exception as repair_error:
+                        print(f"❌ repair_json 也失败: {repair_error}")
+                        raise repair_error
+                
                 # 确保包含needs_expert字段
                 if "needs_expert" not in decision:
                     decision["needs_expert"] = decision.get("needs_data", False)
-            except:
+                
+                print(f"✅ 最终决策: {decision}")
+                
+            except Exception as parse_error:
                 # 如果解析失败，使用默认决策
+                print(f"❌ JSON 解析失败: {parse_error}")
+                print(f"❌ 原始内容: {response_content[:300]}")
                 decision = {
                     "decision": "直接回答",
-                    "reason": "无法解析路由决策",
+                    "reason": f"无法解析路由决策: {str(parse_error)}",
                     "needs_expert": False,
                     "needs_data": False
                 }
