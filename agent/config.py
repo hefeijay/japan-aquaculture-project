@@ -62,8 +62,12 @@ class Settings(BaseSettings):
     
     # OpenAI 配置
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "anthropic/claude-sonnet-4.5"
+    OPENAI_SEARCH_MODEL: str = "openai/gpt-4o-search-preview"  # 搜索模型（用于需要联网的场景）
+    OPENAI_BASE_MODEL: str = "anthropic/claude-sonnet-4.5"  # 基础模型（用于分类/判断任务，不联网）
     OPENAI_TEMPERATURE: float = 0.7
+    OPENAI_BASE_URL: str = "https://openrouter.ai/api/v1"
+    ENABLE_LLM_SEARCH: bool = False  # 默认禁用LLM搜索功能
     
     # 服务配置
     HOST: str = "0.0.0.0"

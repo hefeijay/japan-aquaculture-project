@@ -182,12 +182,17 @@ async def chat(
         if weather_info:
             context["weather_info"] = weather_info
             context["weather_queried"] = True
+            print(f"🌤️ 已将天气信息添加到上下文: {weather_info.get('description', '')}")
+        else:
+            print(f"🌤️ 无需查询天气或查询失败")
         
         # ===== 设备控制分支 =====
         if intent == "设备控制":
             if settings.ENABLE_DEVICE_EXPERT:
                 print("=" * 80)
                 print("🤖 检测到设备控制请求，调用设备管理专家...")
+                if context.get("weather_info"):
+                    print(f"🌤️ 携带天气信息: {context['weather_info'].get('description', '')}")
                 print("=" * 80)
                 
                 # 直接调用设备专家，不走 query_rewriter 和 routing_agent
@@ -707,12 +712,17 @@ async def websocket_endpoint(websocket: WebSocket):
                     if weather_info:
                         context["weather_info"] = weather_info
                         context["weather_queried"] = True
+                        print(f"🌤️ 已将天气信息添加到上下文: {weather_info.get('description', '')}")
+                    else:
+                        print(f"🌤️ 无需查询天气或查询失败")
                     
                     # ===== 设备控制分支 (WebSocket 流式) =====
                     if intent == "设备控制":
                         if settings.ENABLE_DEVICE_EXPERT:
                             print("=" * 80)
                             print("🤖 检测到设备控制请求 (WebSocket)，调用设备管理专家...")
+                            if context.get("weather_info"):
+                                print(f"🌤️ 携带天气信息: {context['weather_info'].get('description', '')}")
                             print("=" * 80)
                             
                             # 定义流式回调函数

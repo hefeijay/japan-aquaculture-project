@@ -82,7 +82,14 @@ class ChatAgent:
 
 请基于对话历史，给出友好、自然的回答。并对用户进行进一步的引导，挖掘用户的意图或者进一步的问题"""
         
-        config = format_config_for_llm(model_config)
+        # 基础对话可能需要联网搜索实时信息
+        config = LLMConfig(
+            model=model_config.get("model_name") if model_config else None,
+            temperature=model_config.get("temperature") if model_config else None,
+            max_tokens=model_config.get("max_tokens") if model_config else None,
+            enable_search=True  # 对话启用搜索，获取实时信息
+        )
+        
         messages = format_messages_for_llm(system_prompt, memory or [])
         messages.append(HumanMessage(content=user_prompt))
         

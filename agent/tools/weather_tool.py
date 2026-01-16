@@ -40,7 +40,11 @@ async def extract_city(text: str) -> str:
     messages.append(HumanMessage(content=text))
     
     try:
-        response, _ = await execute_llm_call(messages, LLMConfig(temperature=0))
+        # 显式禁用搜索，只需要简单的城市名提取
+        response, _ = await execute_llm_call(
+            messages, 
+            LLMConfig(temperature=0, enable_search=False)
+        )
         city = response.strip()
         print(f"🌍 LLM提取城市: {city}")
         return city if city else "Tsukuba"
@@ -79,7 +83,11 @@ async def needs_weather_query(user_input: str) -> bool:
     messages.append(HumanMessage(content=user_input))
     
     try:
-        response, _ = await execute_llm_call(messages, LLMConfig(temperature=0))
+        # 显式禁用搜索，只需要简单的是/否判断
+        response, _ = await execute_llm_call(
+            messages, 
+            LLMConfig(temperature=0, enable_search=False)
+        )
         result = response.strip()
         needs_weather = result == "是"
         print(f"🌤️ 天气意图判断: {result} (需要查询: {needs_weather})")

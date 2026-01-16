@@ -80,7 +80,14 @@ class ThinkingAgent:
 
 请基于以上信息，给出专业的回答。"""
         
-        config = format_config_for_llm(model_config)
+        # 思考智能体基于已有数据分析，不需要搜索
+        config = LLMConfig(
+            model=model_config.get("model_name") if model_config else None,
+            temperature=model_config.get("temperature") if model_config else None,
+            max_tokens=model_config.get("max_tokens") if model_config else None,
+            enable_search=False  # 思考分析禁用搜索
+        )
+        
         messages = format_messages_for_llm(system_prompt, memory or [])
         messages.append(HumanMessage(content=user_prompt))
         

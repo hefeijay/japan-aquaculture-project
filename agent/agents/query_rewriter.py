@@ -100,7 +100,14 @@ class QueryRewriter:
 
 请基于对话历史，将用户问题重写为完整、明确的查询语句，适合发送给日本养殖专家。"""
         
-        config = format_config_for_llm(model_config)
+        # 查询重写不需要搜索，显式禁用
+        config = LLMConfig(
+            model=model_config.get("model_name") if model_config else None,
+            temperature=model_config.get("temperature") if model_config else None,
+            max_tokens=model_config.get("max_tokens") if model_config else None,
+            enable_search=False  # 查询重写禁用搜索
+        )
+        
         messages = format_messages_for_llm(system_prompt)
         messages.append(HumanMessage(content=user_prompt))
         
