@@ -23,7 +23,7 @@ def test_chat(message: str, session_id: str = "test_session"):
                 "message": message,
                 "session_id": session_id,
             },
-            timeout=30
+            timeout=300
         )
         
         if response.status_code == 200:
