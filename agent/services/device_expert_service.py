@@ -114,6 +114,7 @@ class DeviceExpertService:
                     operation_record = None
                     tool_calls = []
                     execution_steps = []
+                    content_sent = False  # 追踪是否有内容通过 stream_callback 发送
                     
                     async for line in response.aiter_lines():
                         if not line.strip():
@@ -125,6 +126,9 @@ class DeviceExpertService:
                             try:
                                 data = json.loads(data_str)
                                 event_type = data.get("type")
+                                
+                                # 调试：记录接收到的事件类型
+                                logger.debug(f"收到设备专家事件: type={event_type}")
                                 
                                 # 如果有事件回调，先透传完整事件给前端
                                 if event_callback:
@@ -143,6 +147,7 @@ class DeviceExpertService:
                                     content = data.get("content", "")
                                     if content and stream_callback:
                                         await stream_callback(content)
+                                        content_sent = True
                                     logger.debug(f"设备专家消息片段: {content[:50]}...")
                                 
                                 elif event_type == "tool_call":
@@ -185,6 +190,27 @@ class DeviceExpertService:
                                     # done 事件中也可能包含操作记录
                                     if not operation_record and "operation_record" in data:
                                         operation_record = data.get("operation_record")
+                                    
+                                    # ⭐️ 从 done 事件的 result 中提取 AI 回答并流式发送
+                                    if final_success and final_result and stream_callback and not content_sent:
+                                        # result 可能是字典，包含 messages 数组
+                                        if isinstance(final_result, dict):
+                                            messages = final_result.get("messages", [])
+                                            if messages and isinstance(messages, list):
+                                                # 获取第一条消息的内容
+                                                first_message = messages[0]
+                                                if isinstance(first_message, dict):
+                                                    content = first_message.get("content", "")
+                                                    if content:
+                                                        # 将完整内容作为一个块发送
+                                                        await stream_callback(content)
+                                                        content_sent = True
+                                                        logger.info(f"从 done 事件发送完整回答: {content[:50]}...")
+                                        # result 也可能直接是字符串
+                                        elif isinstance(final_result, str) and final_result:
+                                            await stream_callback(final_result)
+                                            content_sent = True
+                                            logger.info(f"从 done 事件发送字符串回答: {final_result[:50]}...")
                                     
                                     logger.info(f"设备专家流式完成: success={final_success}, device_type={final_device_type}")
                                     break
