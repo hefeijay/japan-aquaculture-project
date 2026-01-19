@@ -764,7 +764,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             logger.debug(f"发送流式输出开始事件: message_id={assistant_message_id}")
                             
                             # 调用设备专家（流式）
-                            device_response = await device_expert_service.consult_stream(
+                            device_response = await device_expert_service.consult(
                                 query=user_message,
                                 session_id=session_id,
                                 context=context,
