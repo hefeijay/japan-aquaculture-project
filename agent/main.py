@@ -1096,7 +1096,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except json.JSONDecodeError:
                 # 发送格式错误消息
                 await websocket.send_text(json.dumps({
-                    "type": MsgType.ERROR,
+                    "type": "error",
                     "data": {
                         "error": "消息格式错误：必须是有效的 JSON",
                         "session_id": session_id if 'session_id' in locals() else None,
@@ -1121,7 +1121,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error("处理 WebSocket 消息失败", error=str(e), exc_info=True)
                 # 发送错误消息
                 await websocket.send_text(json.dumps({
-                    "type": MsgType.ERROR,
+                    "type": "error",
                     "data": {
                         "error": f"处理消息时发生错误: {str(e)}",
                         "session_id": session_id if 'session_id' in locals() else None,
