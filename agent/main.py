@@ -763,29 +763,55 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_text(json.dumps(stream_start_response, ensure_ascii=False))
                             logger.debug(f"发送流式输出开始事件: message_id={assistant_message_id}")
                             
-                            # 调用设备专家（流式）
-                            device_response = await device_expert_service.consult(
-                                query=user_message,
-                                session_id=session_id,
-                                context=context,
-                                stream_callback=device_stream_callback,
-                            )
-                            
-                            # 发送流式输出结束事件
-                            stream_end_response = {
-                                "type": MsgType.STREAM_CHUNK,
-                                "data": {
-                                    "session_id": session_id,
-                                    "content": "",
-                                    "event": "end",
-                                    "message_id": assistant_message_id,
-                                    "role": "assistant",
-                                    "timestamp": int(datetime.now().timestamp()),
-                                    "type": "stream_chunk",
+                            try:
+                                # 调用设备专家（流式）
+                                device_response = await device_expert_service.consult(
+                                    query=user_message,
+                                    session_id=session_id,
+                                    context=context,
+                                    stream_callback=device_stream_callback,
+                                )
+                            except Exception as device_error:
+                                # 设备专家调用失败，记录错误并构造失败响应
+                                logger.error(f"调用设备专家失败: {str(device_error)}", exc_info=True)
+                                
+                                # 发送错误消息块给前端
+                                error_message = f"抱歉，调用设备专家时发生错误：{str(device_error)}"
+                                error_chunk_response = {
+                                    "type": MsgType.STREAM_CHUNK,
+                                    "data": {
+                                        "session_id": session_id,
+                                        "content": error_message,
+                                        "event": "content",
+                                        "message_id": assistant_message_id,
+                                        "role": "assistant",
+                                        "timestamp": assistant_timestamp,
+                                        "type": "stream_chunk",
+                                    }
                                 }
-                            }
-                            await websocket.send_text(json.dumps(stream_end_response, ensure_ascii=False))
-                            logger.debug(f"发送流式输出结束事件: message_id={assistant_message_id}")
+                                await websocket.send_text(json.dumps(error_chunk_response, ensure_ascii=False))
+                                
+                                # 构造失败响应
+                                device_response = {
+                                    "success": False,
+                                    "error": str(device_error),
+                                }
+                            finally:
+                                # 无论成功还是失败，都要发送流式输出结束事件
+                                stream_end_response = {
+                                    "type": MsgType.STREAM_CHUNK,
+                                    "data": {
+                                        "session_id": session_id,
+                                        "content": "",
+                                        "event": "end",
+                                        "message_id": assistant_message_id,
+                                        "role": "assistant",
+                                        "timestamp": int(datetime.now().timestamp()),
+                                        "type": "stream_chunk",
+                                    }
+                                }
+                                await websocket.send_text(json.dumps(stream_end_response, ensure_ascii=False))
+                                logger.debug(f"发送流式输出结束事件: message_id={assistant_message_id}")
                             
                             # 提取最终回答内容
                             if device_response.get("success"):
@@ -1068,14 +1094,54 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
                 
             except json.JSONDecodeError:
+                # 发送格式错误消息
                 await websocket.send_text(json.dumps({
-                    "error": "消息格式错误：必须是有效的 JSON"
+                    "type": MsgType.ERROR,
+                    "data": {
+                        "error": "消息格式错误：必须是有效的 JSON",
+                        "session_id": session_id if 'session_id' in locals() else None,
+                    }
                 }, ensure_ascii=False))
+                # 发送流结束事件
+                if 'assistant_message_id' in locals():
+                    stream_end_response = {
+                        "type": MsgType.STREAM_CHUNK,
+                        "data": {
+                            "session_id": session_id,
+                            "content": "",
+                            "event": "end",
+                            "message_id": assistant_message_id,
+                            "role": "assistant",
+                            "timestamp": int(datetime.now().timestamp()),
+                            "type": "stream_chunk",
+                        }
+                    }
+                    await websocket.send_text(json.dumps(stream_end_response, ensure_ascii=False))
             except Exception as e:
                 logger.error("处理 WebSocket 消息失败", error=str(e), exc_info=True)
+                # 发送错误消息
                 await websocket.send_text(json.dumps({
-                    "error": f"处理消息时发生错误: {str(e)}"
+                    "type": MsgType.ERROR,
+                    "data": {
+                        "error": f"处理消息时发生错误: {str(e)}",
+                        "session_id": session_id if 'session_id' in locals() else None,
+                    }
                 }, ensure_ascii=False))
+                # 发送流结束事件
+                if 'assistant_message_id' in locals():
+                    stream_end_response = {
+                        "type": MsgType.STREAM_CHUNK,
+                        "data": {
+                            "session_id": session_id,
+                            "content": "",
+                            "event": "end",
+                            "message_id": assistant_message_id,
+                            "role": "assistant",
+                            "timestamp": int(datetime.now().timestamp()),
+                            "type": "stream_chunk",
+                        }
+                    }
+                    await websocket.send_text(json.dumps(stream_end_response, ensure_ascii=False))
                 
     except WebSocketDisconnect:
         logger.info("WebSocket 连接已断开", client=str(websocket.client))
