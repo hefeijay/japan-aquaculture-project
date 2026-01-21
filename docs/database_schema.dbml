@@ -1,6 +1,6 @@
 // 日本陆上养殖项目数据库设计 - DBML定义
-// 基于"方案一：统一设备管理"优化方案
-// 生成日期: 2026-01-07
+// 简化统一设备管理方案
+// 更新日期: 2026-01-21
 // 在线ER图: https://dbdiagram.io/
 
 // ============================================================
@@ -9,22 +9,21 @@
 
 Table ponds {
   id integer [pk, increment, note: '主键ID']
+  pond_id varchar(128) [unique, not null, note: '养殖池业务ID（唯一标识符）']
   name varchar(128) [unique, not null, note: '养殖池名称']
   location varchar(255) [note: '位置信息']
   area float [note: '养殖池实际面积（平方米）']
-  shrimp_count integer [note: '当前虾数量（尾数）']
+  count integer [note: '当前虾数量（尾数）']
   description text [note: '描述/备注']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
-  indexes {
-    (name) [name: 'idx_pond_name']
-  }
   note: '养殖池信息表'
 }
 
 Table batches {
-  batch_id bigint [pk, increment, note: '批次ID（主键）']
+  id integer [pk, increment, note: '数据库主键']
+  batch_id varchar(128) [unique, not null, note: '批次业务ID（唯一标识符，如：BATCH_2024_001）']
   pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）']
   species varchar(64) [not null, default: 'Litopenaeus vannamei', note: '物种（默认南美白对虾学名）']
   start_date date [not null, note: '开始日期']
@@ -33,26 +32,24 @@ Table batches {
   seed_origin varchar(128) [note: '苗种来源']
   stocking_density decimal(10,2) [note: '放养密度（尾/㎡或尾/m³）']
   notes text [note: '备注']
-  status varchar(50) [not null, default: 'active', note: '状态（active=进行中/completed=已完成/cancelled=已取消）']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
     (pond_id, start_date, end_date) [name: 'idx_batches_pond_dates']
-    (status) [name: 'idx_batch_status']
+    (batch_id) [name: 'idx_batches_batch_id']
   }
   note: '批次信息表 - 存储养殖批次的基本信息'
 }
 
 // ============================================================
-// 设备管理模块 - Device Management (统一设备架构)
+// 设备管理模块 - 统一设备架构
 // ============================================================
 
 Table device_types {
-  id integer [pk, increment, note: '主键ID']
-  category varchar(32) [not null, note: '设备大类（sensor/feeder/camera/actuator）']
-  name varchar(64) [unique, not null, note: '设备类型名称']
-  type_code varchar(64) [unique, not null, note: '设备类型代码']
+  id integer [pk, increment, note: '设备类型ID（数据库主键，自增）']
+  category varchar(32) [not null, note: '设备大类（sensor=传感器/feeder=喂食机/camera=摄像头/water_pump=循环水泵/air_blower=鼓风机/water_switch=水龙头开关/solar_heater_pump=太阳能加热器循环泵）']
+  name varchar(64) [unique, not null, note: '设备类型名称（中文，必填，唯一）']
   description text [note: '设备类型描述']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
@@ -60,326 +57,102 @@ Table device_types {
   indexes {
     (category) [name: 'idx_device_type_category']
   }
-  note: '设备类型表 - 定义设备类型和大类，简化结构避免过度设计'
+  note: '设备类型字典表 - 初始数据：1-传感器, 2-喂食机, 3-摄像头, 4-循环水泵, 5-鼓风机, 6-水龙头开关, 7-太阳能加热器循环泵'
 }
-
-Table devices {
-  id integer [pk, increment, note: '主键ID']
-  device_id varchar(128) [unique, not null, note: '设备唯一标识符 (UUID/SN)']
-  name varchar(128) [not null, note: '设备名称']
-  description text [note: '设备描述信息']
-  ownership varchar(128) [not null, note: '设备归属']
-  device_type_id integer [not null, ref: > device_types.id, note: '设备类型ID（FK）- 通过device_types.category字段可获取设备大类']
-  pond_id integer [ref: > ponds.id, note: '所属养殖池ID（FK）']
-  model varchar(128) [note: '设备型号/规格']
-  manufacturer varchar(128) [note: '制造商']
-  serial_number varchar(128) [unique, note: '设备序列号']
-  location varchar(255) [note: '设备安装位置']
-  firmware_version varchar(64) [note: '固件版本']
-  hardware_version varchar(64) [note: '硬件版本']
-  ip_address varchar(45) [note: '设备IP地址']
-  mac_address varchar(17) [note: 'MAC地址']
-  config_json json [note: '设备配置参数（包括认证信息、API配置等）']
-  tags json [note: '设备标签（JSON数组）']
-  installed_at timestamp [note: '安装时间']
-  last_maintenance_at timestamp [note: '最后维护时间']
-  next_maintenance_at timestamp [note: '下次维护时间']
-  warranty_expires_at timestamp [note: '保修到期时间']
-  retired_at timestamp [note: '设备退役时间']
-  status varchar(50) [not null, default: 'active', note: '设备状态（active/inactive/maintenance/retired/error）']
-  is_online boolean [not null, default: false, note: '是否在线']
-  control_mode varchar(20) [not null, default: 'hybrid', note: '控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (device_id) [name: 'idx_device_id']
-    (device_type_id, status) [name: 'idx_device_type_status']
-    (pond_id, status) [name: 'idx_device_pond_status']
-    (control_mode) [name: 'idx_device_control_mode']
-  }
-  note: '统一设备管理表 - 管理所有类型的设备。设备大类通过device_types.category字段获取'
-}
-
-// ============================================================
-// 传感器扩展模块 - Sensor Extension
-// ============================================================
 
 Table sensor_types {
-  id integer [pk, increment, note: '主键ID']
-  type_name varchar(128) [unique, not null, note: '类型名称（如：溶解氧饱和度）']
-  metric varchar(64) [unique, not null, note: 'metric 标识符（do/ph/temperature/turbidity）- 必填，用于路由数据到对应读数表']
-  unit varchar(50) [note: '数据单位（%/mm/°C/NTU）']
+  id integer [pk, increment, note: '传感器类型ID（数据库主键，自增）']
+  type_name varchar(128) [unique, not null, note: '传感器类型名称（必填，唯一）']
+  metric varchar(64) [unique, not null, note: 'metric标识符（do/water_level/PH/temperature/turbidity/ammonia/nitrite/circulation）']
+  unit varchar(50) [note: '数据单位（mg/L/mm/pH/°C/NTU/unknown）']
   valid_min float [note: '有效值下限']
   valid_max float [note: '有效值上限']
-  description text [note: '描述/备注']
+  description text [note: '传感器类型描述/备注']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
     (metric) [name: 'idx_sensor_type_metric']
   }
-  note: '传感器测量类型表 - 定义传感器的测量指标'
+  note: '传感器类型字典表 - 初始数据：1-溶解氧(do), 2-液位(water_level), 3-PH(PH), 4-温度(temperature), 5-浊度(turbidity), 6-氨氮(ammonia), 7-亚硝酸盐(nitrite), 8-循环(circulation)'
 }
 
-Table sensors {
+Table devices {
   id integer [pk, increment, note: '主键ID']
-  device_id integer [unique, not null, ref: > devices.id, note: '关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/status/model等基础信息']
-  sensor_type_id integer [not null, ref: > sensor_types.id, note: '传感器类型ID（FK）']
-  calibration_date timestamp [note: '最后校准日期']
-  calibration_interval_days integer [default: 90, note: '校准周期（天）']
+  device_id varchar(128) [unique, not null, note: '设备唯一标识符（如：feeder_124314, sensor_1343）']
+  name varchar(128) [not null, note: '设备名称（必填）']
+  ownership varchar(128) [not null, note: '设备归属']
+  device_type_id integer [not null, ref: > device_types.id, note: '设备类型ID（FK → device_types.id）']
+  sensor_type_id integer [ref: > sensor_types.id, note: '传感器类型ID（FK → sensor_types.id，仅当category=sensor时填写）']
+  pond_id integer [ref: > ponds.id, note: '所属养殖池ID（FK）']
+  location varchar(255) [note: '设备安装位置']
+  model varchar(128) [note: '设备型号/规格']
+  manufacturer varchar(128) [note: '制造商']
+  serial_number varchar(128) [unique, note: '设备序列号']
+  firmware_version varchar(64) [note: '固件版本']
+  hardware_version varchar(64) [note: '硬件版本']
+  ip_address varchar(45) [note: '设备IP地址']
+  mac_address varchar(17) [note: 'MAC地址']
+  status varchar(50) [not null, default: 'online', note: '设备状态（online=在线/offline=离线，默认：online）']
+  control_mode varchar(20) [not null, default: 'hybrid', note: '控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同，默认：hybrid）']
+  config_json json [note: '设备专属配置（JSON格式），不同设备类型存储不同字段，详见设计说明文档']
+  tags varchar(255) [note: '设备标签（逗号分隔字符串）']
+  description text [note: '设备描述信息']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (device_id) [name: 'idx_sensor_device']
-    (sensor_type_id) [name: 'idx_sensor_type']
+    (device_type_id, status) [name: 'idx_device_type_status']
+    (sensor_type_id) [name: 'idx_device_sensor_type']
+    (pond_id, status) [name: 'idx_device_pond_status']
+    (status) [name: 'idx_device_status']
+    (ownership) [name: 'idx_device_ownership']
   }
-  note: '传感器扩展表 - 只存储传感器特有信息。name/pond_id/status/model等基础信息通过device_id从devices表JOIN获取'
-}
-
-// 溶解氧饱和度读数表
-Table dissolved_oxygen_saturation_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '溶解氧饱和度值']
-  metric varchar(32) [default: 'dissolved_oxygen_saturation', note: '指标标识']
-  unit varchar(20) [default: '%', note: '单位']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_do_sat_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_do_sat_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_do_sat_batch_ts']
-  }
-  note: '溶解氧饱和度读数表 - 存储溶解氧饱和度传感器的测量数据'
-}
-
-// pH值读数表
-Table ph_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: 'pH值']
-  metric varchar(32) [default: 'ph', note: '指标标识']
-  unit varchar(20) [note: '单位']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_ph_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_ph_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_ph_batch_ts']
-  }
-  note: 'pH值读数表 - 存储pH传感器的测量数据'
-}
-
-// 温度读数表
-Table temperature_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '温度值']
-  metric varchar(32) [default: 'temperature', note: '指标标识']
-  unit varchar(20) [default: '°C', note: '单位（°C/°F）']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_temp_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_temp_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_temp_batch_ts']
-  }
-  note: '温度读数表 - 存储温度传感器的测量数据'
-}
-
-// 液位读数表
-Table liquid_level_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '液位值']
-  metric varchar(32) [default: 'liquid_level', note: '指标标识']
-  unit varchar(20) [default: 'mm', note: '单位（mm/cm/m）']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_liquid_level_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_liquid_level_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_liquid_level_batch_ts']
-  }
-  note: '液位读数表 - 存储液位传感器的测量数据'
-}
-
-// 浊度读数表
-Table turbidity_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '浊度值']
-  metric varchar(32) [default: 'turbidity', note: '指标标识']
-  unit varchar(20) [default: 'NTU', note: '单位（NTU）']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_turbidity_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_turbidity_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_turbidity_batch_ts']
-  }
-  note: '浊度读数表 - 存储浊度传感器的测量数据'
-}
-
-// 氨氮浓度读数表
-Table ammonia_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '氨氮浓度值']
-  metric varchar(32) [default: 'ammonia', note: '指标标识']
-  unit varchar(20) [default: 'mg/L', note: '单位（mg/L）']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_ammonia_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_ammonia_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_ammonia_batch_ts']
-  }
-  note: '氨氮浓度读数表 - 存储氨氮传感器的测量数据'
-}
-
-// 亚硝酸盐浓度读数表
-Table nitrite_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '亚硝酸盐浓度值']
-  metric varchar(32) [default: 'nitrite', note: '指标标识']
-  unit varchar(20) [default: 'mg/L', note: '单位（mg/L）']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_nitrite_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_nitrite_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_nitrite_batch_ts']
-  }
-  note: '亚硝酸盐浓度读数表 - 存储亚硝酸盐传感器的测量数据'
-}
-
-// 循环系统读数表
-Table circulation_readings {
-  id bigint [pk, increment, note: '主键ID']
-  sensor_id integer [not null, ref: > sensors.id, note: '传感器设备ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
-  value float [not null, note: '循环系统读数值']
-  metric varchar(32) [default: 'circulation', note: '指标标识']
-  unit varchar(20) [note: '单位']
-  description text [note: '描述']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳（毫秒精度）']
-  ts_local datetime(3) [note: '本地时间戳（日本时区）']
-  recorded_at timestamp [note: '数据记录时间（兼容字段）']
-  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
-  checksum varchar(64) [note: '完整性校验']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (sensor_id, ts_utc) [name: 'idx_circulation_sensor_ts']
-    (pond_id, ts_utc) [name: 'idx_circulation_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_circulation_batch_ts']
-  }
-  note: '循环系统读数表 - 存储循环传感器的测量数据'
+  note: '统一设备管理表 - 管理所有类型设备。sensor_type_id仅当设备为传感器时填写，设备专属配置统一存储在device_config JSON字段中'
 }
 
 // ============================================================
-// 喂食机扩展模块 - Feeder Extension
+// 设备数据日志模块 - 直接关联devices.id
 // ============================================================
 
-Table feeders {
-  id integer [pk, increment, note: '主键ID']
-  device_id integer [unique, not null, ref: > devices.id, note: '关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/status等基础信息']
+Table sensor_readings {
+  id bigint [pk, increment, note: '主键ID']
+  device_id integer [not null, ref: > devices.id, note: '设备ID（FK → devices.id）']
+  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录数据产生时的池位']
+  batch_id integer [ref: > batches.id, note: '批次ID（FK，关联到batches.id主键）']
   
-  // 云端同步配置
-  feed_count integer [default: 1, not null, note: '默认喂食份数（来自云端API的feedCount）']
-  timezone integer [default: 9, note: '时区（UTC+，对应云端API的devTimeZone）']
-  network_type integer [default: 0, note: '网络类型（0=WiFi, 1=4G，对应云端API的netType）']
-  group_id varchar(50) [note: '设备分组ID（对应云端API的groupID）']
+  // 读数数据
+  value float [not null, note: '读数值']
+  unit varchar(50) [note: '单位（%/mm/°C/NTU/mg/L等）']
+  metric varchar(64) [note: 'metric标识符（快照字段，从sensor_types同步，便于查询）']
+  description text [note: '描述']
   
-  // 本地业务配置
-  feed_portion_weight decimal(5,1) [default: 17.0, not null, note: '每份饲料重量（克）- 本地配置，用于计算总投喂量']
-  capacity_kg decimal(10,2) [note: '饲料容量（千克）']
-  feed_type varchar(64) [note: '饲料类型']
+  // 时间戳
+  recorded_at timestamp [note: '数据记录时间']
+  ts_utc datetime(3) [note: 'UTC时间戳（毫秒精度）']
+  ts_local datetime(3) [note: '本地时间戳（日本时区）']
+  
+  // 质量控制
+  quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
+  checksum varchar(64) [note: '完整性校验']
   
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (device_id) [name: 'idx_feeder_device']
-    (group_id) [name: 'idx_feeder_group']
+    (device_id, recorded_at) [name: 'idx_sensor_reading_device_ts']
+    (pond_id, ts_utc) [name: 'idx_sensor_reading_pond_ts']
+    (metric, ts_utc) [name: 'idx_sensor_reading_metric_ts']
+    (batch_id, ts_utc) [name: 'idx_sensor_reading_batch_ts']
   }
-  note: '喂食机扩展表 - 存储喂食机特有信息和云端同步配置。feed_count等字段从云端API同步，feed_portion_weight为本地配置'
+  note: '传感器读数表 - 直接关联devices.id，metric为快照字段便于按类型查询'
 }
 
 Table feeder_logs {
   id bigint [pk, increment, note: '主键ID']
-  feeder_id integer [not null, ref: > feeders.id, note: '喂食机ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
+  device_id integer [not null, ref: > devices.id, note: '设备ID（FK → devices.id）']
+  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录投喂时的池位']
+  batch_id integer [ref: > batches.id, note: '批次ID（FK，关联到batches.id主键）']
   ts_utc datetime(3) [not null, note: 'UTC时间戳']
   ts_local datetime(3) [note: '本地时间戳']
   feed_amount_g decimal(12,3) [note: '投喂量（克）']
@@ -392,59 +165,19 @@ Table feeder_logs {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (feeder_id, ts_utc) [name: 'idx_fl_feeder_ts']
-    (pond_id, ts_utc) [name: 'idx_fl_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_fl_batch_ts']
-    (status) [name: 'idx_fl_status']
-    (pond_id, status, ts_utc) [name: 'idx_fl_pond_status_ts']
+    (device_id, ts_utc) [name: 'idx_feeder_log_device_ts']
+    (pond_id, ts_utc) [name: 'idx_feeder_log_pond_ts']
   }
-  note: '喂食机运行记录表 - pond_id为快照字段，优化LLM查询和保证历史数据一致性'
-}
-
-// ============================================================
-// 摄像头扩展模块 - Camera Extension
-// ============================================================
-
-Table cameras {
-  id integer [pk, increment, note: '主键ID']
-  device_id integer [unique, not null, ref: > devices.id, note: '关联设备ID（FK）- 一对一关系，通过此ID关联获取name/pond_id/location等基础信息']
-  
-  // 当前状态信息（原 camera_status）
-  status varchar(50) [not null, default: 'offline', note: '摄像头状态(online/offline)']
-  quality varchar(50) [note: '画质(高/中/低)']
-  connectivity integer [default: 0, note: '连通性百分比']
-  temperature decimal(5,2) [note: '温度']
-  last_update bigint [note: '最后更新时间戳(毫秒)']
-  last_update_time varchar(50) [note: '最后更新时间字符串']
-  
-  // 摄像头特有配置
-  resolution varchar(50) [note: '分辨率']
-  fps integer [default: 0, note: '帧率']
-  codec varchar(32) [note: '编解码']
-  stream_url varchar(512) [note: '流媒体地址']
-  recording boolean [default: false, note: '是否正在录制']
-  night_vision boolean [default: false, note: '是否开启夜视功能']
-  motion_detection boolean [default: false, note: '是否开启运动检测']
-  
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
-  
-  indexes {
-    (device_id) [name: 'idx_camera_device']
-    (status) [name: 'idx_camera_status']
-  }
-  note: '摄像头扩展表 - 存储摄像头配置和当前状态信息。与devices表1:1关联，与sensors/feeders架构保持一致'
+  note: '喂食机运行记录表 - 直接关联devices.id'
 }
 
 Table camera_images {
   id bigint [pk, increment, note: '主键ID']
-  camera_id integer [not null, ref: > cameras.id, note: '摄像头ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录拍摄时的池位，用于历史数据一致性和LLM查询优化']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
+  device_id integer [not null, ref: > devices.id, note: '设备ID（FK → devices.id）']
+  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段']
+  batch_id integer [ref: > batches.id, note: '批次ID（FK，关联到batches.id主键）']
   image_url varchar(500) [not null, note: '图片URL']
   storage_uri varchar(512) [note: '对象存储路径/URI']
-  last_update bigint [not null, note: '最后更新时间戳(毫秒)']
-  timestamp bigint [not null, note: '图片时间戳(毫秒)']
   ts_utc datetime(3) [not null, note: 'UTC时间戳']
   ts_local datetime(3) [note: '本地时间戳（日本时区）']
   timestamp_str varchar(50) [default: '', note: '图片时间戳字符串']
@@ -452,6 +185,7 @@ Table camera_images {
   height integer [default: 1080, note: '图片高度（像素）']
   format varchar(20) [default: 'jpg', note: '图片格式(jpg/png等)']
   size integer [default: 0, note: '图片大小(字节)']
+  codec varchar(32) [note: '编解码']
   fps integer [default: 0, note: '帧率']
   quality_flag varchar(20) [not null, default: 'ok', note: '质量标记（ok/missing/anomaly）']
   checksum varchar(64) [note: '完整性校验']
@@ -459,18 +193,17 @@ Table camera_images {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (camera_id, timestamp) [name: 'idx_camera_images_camera']
-    (pond_id, ts_utc) [name: 'idx_ci_pond_ts']
-    (batch_id, ts_utc) [name: 'idx_if_batch_ts']
-    (quality_flag, ts_utc) [name: 'idx_ci_quality_ts']
+    (device_id, ts_utc) [name: 'idx_camera_image_device_ts']
+    (pond_id, ts_utc) [name: 'idx_camera_image_pond_ts']
+    (batch_id, ts_utc) [name: 'idx_camera_image_batch_ts']
   }
-  note: '摄像头图片模型 - pond_id为快照字段，优化LLM查询和保证历史数据一致性'
+  note: '摄像头图片表 - 直接关联devices.id'
 }
 
 Table camera_health {
   id integer [pk, increment, note: '主键ID']
-  camera_id integer [not null, ref: > cameras.id, note: '摄像头ID（FK）']
-  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段，记录检查时的池位，用于历史数据一致性和LLM查询优化']
+  device_id integer [not null, ref: > devices.id, note: '设备ID（FK → devices.id）']
+  pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）- 快照字段']
   health_status varchar(50) [not null, note: '健康状态(优秀/良好/一般/需要维护/离线)']
   overall_score decimal(5,2) [not null, note: '总体健康分数(0-100)']
   connectivity_status varchar(50) [not null, note: '连通性检查状态']
@@ -493,11 +226,12 @@ Table camera_health {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (camera_id) [name: 'idx_camera_health_camera']
-    (pond_id, timestamp) [name: 'idx_ch_pond_ts']
+    (device_id, timestamp) [name: 'idx_camera_health_device_ts']
+    (pond_id, timestamp) [name: 'idx_camera_health_pond_ts']
     (health_status) [name: 'idx_camera_health_status']
+    (overall_score) [name: 'idx_ch_overall_score']
   }
-  note: '摄像头健康检查模型 - pond_id为快照字段，优化LLM查询和保证历史数据一致性'
+  note: '摄像头健康检查表 - 直接关联devices.id'
 }
 
 // ============================================================
@@ -507,7 +241,7 @@ Table camera_health {
 Table shrimp_stats {
   id bigint [pk, increment, note: '主键ID']
   frame_id bigint [ref: > camera_images.id, note: '图像帧ID（FK -> camera_images）']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
+  batch_id integer [ref: > batches.id, note: '批次ID（FK，关联到batches.id主键）']
   ts_utc datetime(3) [not null, note: 'UTC时间戳（推理时间）']
   uuid varchar(36) [note: 'UUID']
   pond_id integer [not null, ref: > ponds.id, note: '所属养殖池ID（FK）']
@@ -542,11 +276,11 @@ Table shrimp_stats {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (frame_id) [name: 'idx_id_frame']
-    (ts_utc) [name: 'idx_id_ts']
-    (pond_id) [name: 'idx_shrimp_stats_pond']
-    (model_name, model_version) [name: 'idx_id_modelver']
+    (frame_id) [name: 'idx_ss_frame']
+    (ts_utc) [name: 'idx_ss_ts']
+    (pond_id, ts_utc) [name: 'idx_shrimp_stats_pond_ts']
     (batch_id, ts_utc) [name: 'idx_ss_batch_ts']
+    (model_name, model_version) [name: 'idx_id_modelver']
   }
   note: '图像识别统计结果表'
 }
@@ -555,10 +289,10 @@ Table shrimp_stats {
 // 操作日志模块 - Operation Logs
 // ============================================================
 
-Table operation_logs {
+Table operations_logs {
   id bigint [pk, increment, note: '主键ID']
-  operator_id integer [not null, ref: > users.id, note: '操作人ID（FK → users.id）']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
+  user_id integer [not null, ref: > user.id, note: '操作用户ID（FK → user.id）']
+  batch_id integer [ref: > batches.id, note: '批次ID（FK，关联到batches.id主键）']
   pond_id integer [ref: > ponds.id, note: '所属养殖池ID（FK）']
   ts_utc datetime(3) [not null, note: 'UTC时间戳']
   ts_local datetime(3) [note: '本地时间戳']
@@ -569,7 +303,7 @@ Table operation_logs {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (operator_id, ts_utc) [name: 'idx_ol_operator_ts']
+    (user_id, ts_utc) [name: 'idx_ol_user_ts']
     (batch_id, ts_utc) [name: 'idx_ol_batch_ts']
     (pond_id, ts_utc) [name: 'idx_ol_pond_ts']
   }
@@ -578,11 +312,11 @@ Table operation_logs {
 
 Table history_records {
   id bigint [pk, increment, note: '主键ID']
-  batch_id bigint [ref: > batches.batch_id, note: '批次ID（FK）']
+  batch_id bigint [note: '批次ID']
   metric_name varchar(64) [not null, note: '指标名称']
   value varchar(128) [not null, note: '值（文本存储）']
   unit varchar(16) [note: '单位']
-  ts_utc datetime(3) [not null, note: 'UTC时间戳']
+  ts_utc datetime(3) [note: 'UTC时间戳']
   ts_local datetime(3) [note: '本地时间戳']
   notes text [note: '备注']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
@@ -609,15 +343,17 @@ Table ai_decisions {
   priority integer [default: 0, note: '优先级(0-10，数字越大优先级越高)']
   confidence decimal(5,2) [default: 0, note: 'AI决策置信度(0-100)']
   status varchar(50) [not null, default: 'active', note: '状态：active-活跃, processed-已处理, expired-已过期']
-  expires_at timestamp [note: '过期时间，过期后消息将不再显示']
+  expires_at timestamp [note: '过期时间']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (type) [name: 'idx_decision_type']
-    (status) [name: 'idx_decision_status']
-    (priority) [name: 'idx_decision_priority']
-    (source, source_id) [name: 'idx_decision_source']
+    (type) [name: 'idx_type']
+    (status) [name: 'idx_status']
+    (priority) [name: 'idx_priority']
+    (source, source_id) [name: 'idx_source']
+    (created_at) [name: 'idx_created_at']
+    (expires_at) [name: 'idx_expires_at']
   }
   note: 'AI决策消息模型 - 存储AI系统生成的各类决策消息'
 }
@@ -650,9 +386,10 @@ Table decision_rules {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (condition_type) [name: 'idx_rule_condition_type']
-    (decision_type) [name: 'idx_rule_decision_type']
-    (is_active) [name: 'idx_rule_is_active']
+    (condition_type) [name: 'idx_condition_type']
+    (decision_type) [name: 'idx_decision_type']
+    (priority) [name: 'idx_priority']
+    (is_active) [name: 'idx_is_active']
   }
   note: 'AI决策规则模型 - 定义触发AI决策的条件和规则'
 }
@@ -661,7 +398,7 @@ Table decision_rules {
 // 用户系统模块 - User System
 // ============================================================
 
-Table users {
+Table user {
   id integer [pk, increment, note: '主键ID']
   user_id varchar(128) [unique, not null, note: '用户唯一标识ID']
   username varchar(128) [unique, not null, note: '用户名（唯一）']
@@ -674,49 +411,46 @@ Table users {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (user_id) [name: 'idx_user_id']
-    (username) [name: 'idx_username']
-    (email) [name: 'idx_email']
-    (phone) [name: 'idx_phone']
-    (role) [name: 'idx_user_role']
+    (user_id) [name: 'idx_user_user_id']
+    (username) [name: 'idx_user_username']
+    (email) [name: 'idx_user_email']
+    (status) [name: 'idx_user_status']
   }
   note: '用户表 - 通过role字段区分管理员/员工/普通用户'
 }
 
-Table sessions {
+Table session {
   id integer [pk, increment, note: '主键ID']
   session_id varchar(128) [unique, not null, note: '会话唯一标识ID']
-  user_id integer [not null, ref: > users.id, note: '用户ID（FK → users.id）']
+  user_id varchar(128) [not null, note: '用户ID']
   session_name varchar(128) [default: 'new chat', note: '会话名称']
   config text [note: '会话配置']
   summary varchar(2048) [note: '会话摘要']
-  status varchar(50) [not null, default: 'active', note: '状态（active/inactive）']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
+  status varchar(50) [default: 'deactive', note: '状态（active/deactive）']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
     (session_id) [name: 'idx_session_id']
-    (user_id) [name: 'idx_session_user']
   }
   note: '会话表'
 }
 
-Table chat_histories {
+Table chat_history {
   id integer [pk, increment, note: '主键ID']
-  session_id integer [not null, ref: > sessions.id, note: '会话ID（FK → sessions.id）']
+  session_id varchar(128) [not null, note: '会话ID']
   message_id varchar(128) [note: '消息唯一ID']
   role varchar(32) [note: '角色（user/assistant/system）']
   content text [note: '消息内容']
   type varchar(50) [note: '消息类型']
   tool_calls text [note: '工具调用（JSON）']
   meta_data text [note: '元数据（JSON）']
-  status varchar(50) [not null, default: 'active', note: '状态']
+  status varchar(50) [default: 'active', note: '状态']
   timestamp timestamp [default: `CURRENT_TIMESTAMP`, note: '时间戳']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (session_id) [name: 'idx_chat_session']
-    (message_id) [name: 'idx_chat_message']
+    (session_id) [name: 'idx_session_id']
   }
   note: '聊天历史表'
 }
@@ -725,10 +459,10 @@ Table chat_histories {
 // 任务系统模块 - Task System
 // ============================================================
 
-Table agent_tasks {
+Table agent_task {
   id bigint [pk, increment, note: '主键ID']
   task_id varchar(255) [unique, not null, note: '任务唯一标识']
-  session_id integer [ref: > sessions.id, note: '会话ID（FK → sessions.id）']
+  session_id varchar(255) [note: '会话ID']
   parent_task_id varchar(255) [note: '父任务ID']
   goal text [not null, note: '任务目标']
   input_params json [note: '输入参数']
@@ -744,9 +478,10 @@ Table agent_tasks {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (task_id) [name: 'idx_agent_task_id']
-    (session_id) [name: 'idx_agent_task_session']
-    (status) [name: 'idx_agent_task_status']
+    (task_id) [name: 'idx_task_id']
+    (session_id) [name: 'idx_session_id']
+    (parent_task_id) [name: 'idx_parent_task_id']
+    (status) [name: 'idx_status']
   }
   note: '大模型Agent运行的任务表'
 }
@@ -754,42 +489,34 @@ Table agent_tasks {
 Table tasks {
   id integer [pk, increment, note: '主键ID']
   task_id varchar(64) [unique, not null, note: '任务唯一标识']
-  task_name varchar(255) [not null, note: '任务名称']
-  description text [note: '任务描述']
-  priority varchar(20) [not null, default: '中', note: '优先级（高/中/低）']
-  assignee_id integer [not null, ref: > users.id, note: '负责人ID（FK → users.id，角色应为employee或admin）']
-  pond_id integer [ref: > ponds.id, note: '关联养殖池ID（FK）']
-  due_date timestamp [note: '截止时间']
-  task_type varchar(64) [note: '任务类型（maintenance/feeding/inspection/cleaning/emergency）']
-  status varchar(50) [not null, default: 'pending', note: '状态（pending/assigned/in_progress/completed/cancelled）']
-  started_at timestamp [note: '开始时间']
-  completed_at timestamp [note: '完成时间']
-  related_device_id integer [ref: > devices.id, note: '关联设备ID（可选）']
-  notes text [note: '备注/进度记录']
+  topic varchar(255) [not null, note: '任务主题']
+  tool_name varchar(255) [not null, note: '工具名称']
+  mode varchar(64) [not null, note: '模式']
+  request text [not null, note: '请求内容']
+  status varchar(64) [not null, note: '状态']
+  response text [note: '响应内容']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '创建时间']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
+  completed_at timestamp [note: '完成时间']
   
   indexes {
     (task_id) [name: 'idx_task_id']
-    (assignee_id, status) [name: 'idx_task_assignee_status']
-    (pond_id, status) [name: 'idx_task_pond_status']
-    (priority, due_date) [name: 'idx_task_priority_due']
-    (status, due_date) [name: 'idx_task_status_due']
+    (topic) [name: 'idx_topic']
   }
-  note: '任务管理表 - 用于分配任务给用户（员工角色），通过users表的phone/email进行通知'
+  note: '任务表 - 用于工具调用任务管理'
 }
 
-Table message_queues {
+Table message_queue {
   id integer [pk, increment, note: '主键ID']
   message_id varchar(128) [unique, not null, note: '消息唯一标识']
   content text [not null, note: '消息内容']
   message_metadata text [note: '消息元数据(JSON格式)']
   message_type varchar(50) [not null, default: 'general', note: '消息类型(sensor_data/user_input/system_alert/general)']
-  priority integer [not null, default: 5, note: '消息优先级(0-10，数字越大优先级越高)']
-  status varchar(50) [not null, default: 'pending', note: '消息状态：pending-待处理, processing-处理中, completed-已完成, failed-处理失败, expired-已过期']
+  priority integer [not null, default: 5, note: '消息优先级(0-10)']
+  status varchar(50) [not null, default: 'pending', note: '消息状态：pending/processing/completed/failed/expired']
   retry_count integer [not null, default: 0, note: '重试次数']
   max_retries integer [not null, default: 3, note: '最大重试次数']
-  error_message text [note: '处理失败时的错误信息']
+  error_message text [note: '错误信息']
   consumed_at timestamp [note: '开始处理时间']
   completed_at timestamp [note: '处理完成时间']
   expires_at timestamp [note: '消息过期时间']
@@ -797,11 +524,13 @@ Table message_queues {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (status) [name: 'idx_mq_status']
-    (priority) [name: 'idx_mq_priority']
-    (message_type) [name: 'idx_mq_message_type']
+    (status) [name: 'idx_status']
+    (priority) [name: 'idx_priority']
+    (message_type) [name: 'idx_message_type']
+    (created_at) [name: 'idx_created_at']
+    (consumed_at) [name: 'idx_consumed_at']
   }
-  note: '消息队列模型 - 存储待处理的消息，用于多智能体协作系统'
+  note: '消息队列模型 - 存储待处理的消息'
 }
 
 // ============================================================
@@ -818,14 +547,14 @@ Table knowledge_bases {
   
   indexes {
     (knowledge_base_id) [name: 'idx_kb_id']
-    (knowledge_base_name) [name: 'idx_kb_name']
+    (knowledge_base_name) [name: 'idx_name']
   }
   note: '知识库表 - 存储知识库的基本信息'
 }
 
 Table knowledge_documents {
   id integer [pk, increment, note: '自增主键ID']
-  knowledge_base_id integer [not null, ref: > knowledge_bases.id, note: '所属知识库ID（FK → knowledge_bases.id）']
+  knowledge_base_id varchar(36) [not null, ref: > knowledge_bases.knowledge_base_id, note: '所属知识库ID（FK）']
   document_name varchar(512) [not null, note: '文档名称']
   document_path varchar(1024) [note: '文档存储路径']
   document_type varchar(50) [note: '文档类型：txt, pdf, docx 等']
@@ -834,13 +563,13 @@ Table knowledge_documents {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '更新时间']
   
   indexes {
-    (knowledge_base_id) [name: 'idx_doc_kb_id']
+    (knowledge_base_id) [name: 'idx_kb_id']
     (document_name) [name: 'idx_doc_name']
   }
   note: '知识库文档表 - 存储知识库中的文档信息'
 }
 
-Table manual_docs {
+Table manuals_docs {
   id bigint [pk, increment, note: '主键ID']
   doc_uri varchar(512) [not null, note: '文档URI']
   version varchar(64) [note: '版本']
@@ -851,6 +580,7 @@ Table manual_docs {
   
   indexes {
     (version) [name: 'idx_md_version']
+    (created_at) [name: 'idx_md_created']
   }
   note: '养殖手册/文档索引表'
 }
@@ -870,10 +600,6 @@ Table tools {
   schema_def text [note: '工具的参数定义']
   ownership varchar(50) [not null, default: 'default', note: '所有权']
   
-  indexes {
-    (tool_id) [name: 'idx_tool_id']
-    (name) [name: 'idx_tool_name']
-  }
   note: '工具表'
 }
 
@@ -906,32 +632,66 @@ Table models {
   
   indexes {
     (model_id) [name: 'idx_model_id']
-    (status) [name: 'idx_model_status']
+    (status) [name: 'idx_status']
   }
   note: 'AI模型表 - 存储可用的AI模型信息'
 }
 
-Table topic_memories {
+Table topic_memory {
   id integer [pk, increment, note: '自增主键ID']
   topic_id varchar(128) [unique, not null, note: '主题唯一标识ID']
   topic_name varchar(255) [not null, note: '归类的主题名称']
   topic_content text [note: '总结的主题内容描述']
   related_tags text [note: '该主题的关键标签，多个标签用逗号分隔']
-  session_id integer [not null, ref: > sessions.id, note: '创建该主题的会话ID（FK → sessions.id）']
-  status varchar(50) [not null, default: 'active', note: '主题状态：active-活跃，inactive-非活跃，deleted-已删除']
-  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '主题最初创建时间']
-  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '主题最新更新时间']
+  session_id varchar(128) [not null, note: '创建该主题的会话ID']
+  status varchar(50) [default: 'active', note: '主题状态：active-活跃，inactive-非活跃，deleted-已删除']
+  create_time timestamp [default: `CURRENT_TIMESTAMP`, note: '主题最初创建时间']
+  update_time timestamp [default: `CURRENT_TIMESTAMP`, note: '主题最新更新时间']
   
   indexes {
     (topic_id) [name: 'idx_topic_id']
-    (session_id) [name: 'idx_topic_session']
+    (session_id) [name: 'idx_session_id']
+    (create_time) [name: 'idx_create_time']
+    (update_time) [name: 'idx_update_time']
   }
   note: '话题记忆表 - 用于存储海马体式的分类记忆用户聊天话题主题'
 }
 
 // ============================================================
-// 说明 - Notes
+// 设计说明 - Notes
 // ============================================================
-// 所有外键关系已在表字段定义中使用 [ref: > table.field] 语法定义
-// 避免在此处重复定义造成 "References with same endpoints exist" 错误
-
+// 更新日期：2026-01-21
+// 
+// 核心改进：
+// 1. ✅ 删除扩展表：移除sensors/feeders/cameras三张扩展表
+// 2. ✅ 统一设备管理：所有设备信息存储在devices表
+// 3. ✅ 直接关联：所有日志表直接关联devices.id
+// 4. ✅ 灵活配置：设备专属配置统一存储在device_config JSON字段
+// 5. ✅ 类型管理：通过device_types和sensor_types字典表管理设备类型
+//
+// 设备类型初始数据(device_types)：
+// 1. sensor - 传感器
+// 2. feeder - 喂食机
+// 3. camera - 摄像头
+// 4. water_pump - 循环水泵
+// 5. air_blower - 鼓风机
+// 6. water_switch - 水龙头开关
+// 7. solar_heater_pump - 太阳能加热器循环泵
+//
+// 传感器类型初始数据(sensor_types)：
+// 1. dissolved_oxygen_aturation - do - mg/L - 溶解氧饱和度
+// 2. liquid_level - water_level - mm - 液位
+// 3. PH - PH - pH - PH
+// 4. temperature - temperature - °C - 温度
+// 5. turbidity - turbidity - NTU - 浊度
+// 6. ammonia - ammonia - mg/L - 氨氮浓度
+// 7. nitrite - nitrite - mg/L - 亚硝酸盐浓度
+// 8. circulation - circulation - unknown - 循环
+//
+// device_config JSON配置示例：
+// 喂食机: {"feed_count": 1, "timezone": 9, "network_type": 0, "group_id": "xxx", "feed_portion_weight": 17.0, "capacity_kg": 50, "feed_type": "颗粒饲料"}
+// 摄像头: {"quality": "高", "resolution": "1920x1080"}
+// 循环水泵: {"circulation_volume": 60, "power": 750}
+// 鼓风机: {"air_volume": 80, "power": 450}
+// 太阳能加热器循环泵: {"circulation_volume": 45, "power": 500}
+// 水龙头开关: {} (暂无特殊配置)

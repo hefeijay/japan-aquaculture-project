@@ -3,19 +3,18 @@
 """
 设备数据服务模块
 负责从数据库获取设备状态和配置信息
+适配统一设备表架构（devices表直接存储所有设备信息）
 """
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 import time
+import random
 
 from db_models.db_session import db_session_factory
 from db_models.device import Device, DeviceType
-from db_models.sensor import Sensor
 from db_models.sensor_type import SensorType
-from db_models.feeder import Feeder
-from db_models.camera import Camera
 from db_models.sensor_reading import SensorReading
 from sqlalchemy import desc
 
@@ -35,6 +34,10 @@ DEVICE_TYPE_MAP = {
     "sensor": "sensor",
     "feeder": "feeder",
     "camera": "camera",
+    "water_pump": "pump",
+    "air_blower": "aerator",
+    "water_switch": "switch",
+    "solar_heater_pump": "heater",
     "aerator": "aerator",
     "pump": "pump",
     "filter": "filter",
@@ -50,53 +53,81 @@ class DeviceService:
     @classmethod
     def get_all_devices_status(cls) -> List[Dict[str, Any]]:
         """
-        获取所有设备的状态信息
+        获取所有设备的状态信息（过滤已软删除的设备）
+        
+        返回格式：
+        {
+            "id": "device_001",
+            "name": "增氧机-1号",
+            "type": "aerator",
+            "status": "运行中",
+            "parameters": { ... },
+            "lastUpdate": 1704067200000,
+            "lastUpdateTime": "2024-01-01 12:00:00"
+        }
         
         Returns:
             设备状态数据列表
         """
         try:
             with db_session_factory() as session:
-                # 查询所有设备及其类型
+                # 查询所有未删除的设备及其类型
                 devices = session.query(Device, DeviceType)\
                     .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(Device.is_deleted == False)\
                     .all()
                 
                 devices_data = []
                 
                 for device, device_type in devices:
-                    # 基础设备信息
+                    # 构建 parameters，包含位置等额外信息
+                    parameters = device.device_specific_config.copy() if device.device_specific_config else {}
+                    
+                    # 将位置、养殖池等信息放入 parameters
+                    if device.location:
+                        parameters["location"] = device.location
+                    if device.pond_id:
+                        parameters["pond_id"] = device.pond_id
+                    if device.model:
+                        parameters["model"] = device.model
+                    if device.manufacturer:
+                        parameters["manufacturer"] = device.manufacturer
+                    
+                    # 传感器设备将传感器类型信息扁平化到 parameters
+                    if device_type.category == "sensor":
+                        sensor_info = cls._get_sensor_type_info(session, device)
+                        if sensor_info:
+                            # 将 sensor_info 的所有字段扁平化到 parameters 中
+                            parameters["sensor_type_id"] = sensor_info.get("sensor_type_id")
+                            parameters["sensor_type_name"] = sensor_info.get("sensor_type_name")
+                            parameters["metric"] = sensor_info.get("metric")
+                            parameters["unit"] = sensor_info.get("unit")
+                            parameters["valid_min"] = sensor_info.get("valid_min")
+                            parameters["valid_max"] = sensor_info.get("valid_max")
+                            parameters["description"] = sensor_info.get("description")
+                            if "latest_value" in sensor_info:
+                                parameters["latest_value"] = sensor_info.get("latest_value")
+                            if "latest_reading_time" in sensor_info:
+                                parameters["latest_reading_time"] = sensor_info.get("latest_reading_time")
+                    
+                    # 基础设备信息（精简格式）
                     device_data = {
-                        "id": f"device_{device.id}",
-                        "device_id": device.device_id,
+                        "id": device.device_id,  # 使用设备唯一标识符
                         "name": device.name,
                         "type": DEVICE_TYPE_MAP.get(device_type.category, device_type.category),
-                        "category": device_type.category,
-                        "type_name": device_type.name,
                         "status": cls._translate_status(device.status),
-                        "statusColor": DEVICE_STATUS_COLORS.get(device.status, "#808080"),
-                        "parameters": {},
+                        "parameters": parameters,
                         "lastUpdate": int(device.updated_at.timestamp() * 1000) if device.updated_at else int(time.time() * 1000),
-                        "lastUpdateTime": device.updated_at.strftime("%H:%M:%S") if device.updated_at else datetime.now().strftime("%H:%M:%S"),
-                        "location": device.location or "",
-                        "pond_id": device.pond_id
+                        "lastUpdateTime": device.updated_at.strftime("%Y-%m-%d %H:%M:%S") if device.updated_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
-                    
-                    # 根据设备类型获取特定参数
-                    if device_type.category == "sensor":
-                        device_data["parameters"] = cls._get_sensor_parameters(session, device.id)
-                    elif device_type.category == "feeder":
-                        device_data["parameters"] = cls._get_feeder_parameters(session, device.id)
-                    elif device_type.category == "camera":
-                        device_data["parameters"] = cls._get_camera_parameters(session, device.id)
-                    else:
-                        # 其他设备类型从 config_json 获取参数
-                        if device.config_json:
-                            device_data["parameters"] = device.config_json
                     
                     devices_data.append(device_data)
                 
-                logger.info(f"成功获取{len(devices_data)}个设备的状态信息")
+                # 随机选择5个设备返回
+                if len(devices_data) > 5:
+                    devices_data = random.sample(devices_data, 5)
+                
+                logger.info(f"成功获取{len(devices_data)}个设备的状态信息（随机选择）")
                 return devices_data
                 
         except Exception as e:
@@ -107,6 +138,7 @@ class DeviceService:
     def _translate_status(cls, status: str) -> str:
         """
         翻译设备状态为中文
+        在线=运行中, 离线=待机
         
         Args:
             status: 英文状态
@@ -116,136 +148,66 @@ class DeviceService:
         """
         status_map = {
             "online": "运行中",
-            "offline": "离线",
+            "offline": "待机",
             "maintenance": "维护中",
             "standby": "待机"
         }
         return status_map.get(status, status)
     
     @classmethod
-    def _get_sensor_parameters(cls, session, device_id: int) -> Dict[str, Any]:
+    def _get_sensor_type_info(cls, session, device: Device) -> Optional[Dict[str, Any]]:
         """
-        获取传感器设备的参数信息
+        获取传感器设备的传感器类型信息
+        从devices表的sensor_type_id关联sensor_types表获取
         
         Args:
             session: 数据库会话
-            device_id: 设备ID
+            device: 设备对象
             
         Returns:
-            传感器参数字典
+            传感器类型信息字典
         """
         try:
-            # 查询传感器信息
-            sensor = session.query(Sensor, SensorType)\
-                .join(SensorType, Sensor.sensor_type_id == SensorType.id)\
-                .filter(Sensor.device_id == device_id)\
+            if not device.sensor_type_id:
+                return None
+            
+            sensor_type = session.query(SensorType)\
+                .filter(SensorType.id == device.sensor_type_id)\
                 .first()
             
-            if not sensor:
-                return {}
+            if not sensor_type:
+                return None
             
-            sensor_obj, sensor_type = sensor
+            info = {
+                "sensor_type_id": sensor_type.id,
+                "sensor_type_name": sensor_type.type_name,
+                "metric": sensor_type.metric,
+                "unit": sensor_type.unit,
+                "valid_min": float(sensor_type.valid_min) if sensor_type.valid_min is not None else None,
+                "valid_max": float(sensor_type.valid_max) if sensor_type.valid_max is not None else None,
+                "description": sensor_type.description
+            }
             
-            # 获取最新读数
+            # 获取最新读数（直接通过device.id查询）
             latest_reading = session.query(SensorReading)\
-                .filter(SensorReading.sensor_id == sensor_obj.id)\
+                .filter(SensorReading.device_id == device.id)\
                 .order_by(desc(SensorReading.recorded_at))\
                 .first()
             
-            parameters = {
-                "sensor_type": sensor_type.type_name,
-                "metric": sensor_type.metric,
-                "unit": sensor_type.unit,
-                "valid_range": f"{sensor_type.valid_min} - {sensor_type.valid_max}" if sensor_type.valid_min is not None else "N/A"
-            }
-            
             if latest_reading:
-                parameters["latest_value"] = float(latest_reading.value)
-                parameters["latest_reading_time"] = latest_reading.recorded_at.strftime("%Y-%m-%d %H:%M:%S") if latest_reading.recorded_at else "N/A"
+                info["latest_value"] = float(latest_reading.value)
+                info["latest_reading_time"] = latest_reading.recorded_at.strftime("%Y-%m-%d %H:%M:%S") if latest_reading.recorded_at else None
             
-            return parameters
-            
-        except Exception as e:
-            logger.error(f"获取传感器参数失败: {str(e)}")
-            return {}
-    
-    @classmethod
-    def _get_feeder_parameters(cls, session, device_id: int) -> Dict[str, Any]:
-        """
-        获取喂食机设备的参数信息
-        
-        Args:
-            session: 数据库会话
-            device_id: 设备ID
-            
-        Returns:
-            喂食机参数字典
-        """
-        try:
-            # 查询喂食机信息
-            feeder = session.query(Feeder)\
-                .filter(Feeder.device_id == device_id)\
-                .first()
-            
-            if not feeder:
-                return {}
-            
-            parameters = {
-                "feed_count": feeder.feed_count,
-                "feed_portion_weight": float(feeder.feed_portion_weight) if feeder.feed_portion_weight else 0,
-                "capacity_kg": float(feeder.capacity_kg) if feeder.capacity_kg else 0,
-                "remaining": "N/A"  # 需要计算剩余量
-            }
-            
-            # 如果有容量和使用记录，可以计算剩余量
-            if feeder.capacity_kg:
-                parameters["schedule"] = "正常"
-            
-            return parameters
+            return info
             
         except Exception as e:
-            logger.error(f"获取喂食机参数失败: {str(e)}")
-            return {}
-    
-    @classmethod
-    def _get_camera_parameters(cls, session, device_id: int) -> Dict[str, Any]:
-        """
-        获取摄像头设备的参数信息
-        
-        Args:
-            session: 数据库会话
-            device_id: 设备ID
-            
-        Returns:
-            摄像头参数字典
-        """
-        try:
-            # 查询摄像头信息
-            camera = session.query(Camera)\
-                .filter(Camera.device_id == device_id)\
-                .first()
-            
-            if not camera:
-                return {}
-            
-            parameters = {
-                "quality": camera.quality or "未知",
-                "connectivity": camera.connectivity,
-                "temperature": float(camera.temperature) if camera.temperature else None,
-                "recording": camera.recording if hasattr(camera, 'recording') else False,
-                "resolution": f"{camera.resolution_width}x{camera.resolution_height}" if hasattr(camera, 'resolution_width') else "N/A"
-            }
-            
-            return parameters
-            
-        except Exception as e:
-            logger.error(f"获取摄像头参数失败: {str(e)}")
-            return {}
+            logger.error(f"获取传感器类型信息失败: {str(e)}")
+            return None
     
     @classmethod
     def get_device_by_id(cls, device_id: str) -> Optional[Dict[str, Any]]:
         """
-        根据设备ID获取单个设备的详细信息
+        根据设备ID获取单个设备的详细信息（过滤已软删除的设备）
         
         Args:
             device_id: 设备唯一标识符
@@ -258,10 +220,11 @@ class DeviceService:
                 device_query = session.query(Device, DeviceType)\
                     .join(DeviceType, Device.device_type_id == DeviceType.id)\
                     .filter(Device.device_id == device_id)\
+                    .filter(Device.is_deleted == False)\
                     .first()
                 
                 if not device_query:
-                    logger.warning(f"设备{device_id}不存在")
+                    logger.warning(f"设备{device_id}不存在或已删除")
                     return None
                 
                 device, device_type = device_query
@@ -282,14 +245,15 @@ class DeviceService:
                     "pond_id": device.pond_id,
                     "status": device.status,
                     "control_mode": device.control_mode,
-                    "firmware_version": device.firmware_version,
-                    "hardware_version": device.hardware_version,
-                    "ip_address": device.ip_address,
-                    "mac_address": device.mac_address,
-                    "config": device.config_json,
+                    "connection_info": device.connection_info,
+                    "device_specific_config": device.device_specific_config,
                     "created_at": device.created_at.isoformat() if device.created_at else None,
                     "updated_at": device.updated_at.isoformat() if device.updated_at else None
                 }
+                
+                # 如果是传感器，添加sensor_type的info信息
+                if device_type.category == "sensor":
+                    device_info["info"] = cls._get_sensor_type_info(session, device)
                 
                 logger.info(f"成功获取设备{device_id}的详细信息")
                 return device_info
@@ -298,3 +262,24 @@ class DeviceService:
             logger.error(f"获取设备{device_id}详细信息失败: {str(e)}", exc_info=True)
             return None
 
+    @classmethod
+    def get_device_by_db_id(cls, db_id: int) -> Optional[Device]:
+        """
+        根据数据库主键ID获取设备对象（过滤已软删除的设备）
+        
+        Args:
+            db_id: 设备数据库主键ID
+            
+        Returns:
+            设备对象，如果不存在返回None
+        """
+        try:
+            with db_session_factory() as session:
+                device = session.query(Device)\
+                    .filter(Device.id == db_id)\
+                    .filter(Device.is_deleted == False)\
+                    .first()
+                return device
+        except Exception as e:
+            logger.error(f"获取设备失败: {str(e)}")
+            return None

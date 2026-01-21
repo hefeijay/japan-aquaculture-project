@@ -73,18 +73,13 @@ class Pond(Base):
         comment="更新时间",
         init=False
     )
-    # # ORM 关系：一个养殖池可以有多个传感器 
-    # sensors: Mapped[list["Sensor"]] = relationship(back_populates="pond", cascade="all, delete-orphan", init=False)
+
     # ORM 关系定义
     batches: Mapped[List["Batch"]] = relationship(back_populates="pond", init=False)
     devices: Mapped[List["Device"]] = relationship(back_populates="pond", init=False)
-    sensors: Mapped[List["Sensor"]] = relationship(back_populates="pond", init=False)
-    feeders: Mapped[List["Feeder"]] = relationship(back_populates="pond", init=False)
-    cameras: Mapped[List["Camera"]] = relationship(back_populates="pond", init=False)
     sensor_readings: Mapped[List["SensorReading"]] = relationship(back_populates="pond", init=False)
     feeder_logs: Mapped[List["FeederLog"]] = relationship(back_populates="pond", init=False)
     camera_images: Mapped[List["CameraImage"]] = relationship(back_populates="pond", init=False)
     camera_health: Mapped[List["CameraHealth"]] = relationship(back_populates="pond", init=False)
     shrimp_stats: Mapped[List["ShrimpStats"]] = relationship(back_populates="pond", init=False)
     operation_logs: Mapped[List["OperationLog"]] = relationship(back_populates="pond", init=False)
-    # tasks: Mapped[List["Task"]] = relationship(back_populates="pond", init=False)

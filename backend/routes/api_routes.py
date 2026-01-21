@@ -11,6 +11,7 @@ import logging
 import time
 import uuid
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy import or_
 
 # 取消模拟数据：移除 DataGeneratorService 的使用
 # CameraService 延迟在端点内部导入，避免外部依赖影响启动
@@ -252,6 +253,34 @@ def get_location_data():
         }), 500
     except Exception as e:
         logger.error(f"地理位置数据接口异常: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+
+@api_bp.route('/cameras/list', methods=['GET'])
+def get_camera_list():
+    """
+    获取所有摄像头设备列表
+    
+    Returns:
+        JSON格式的摄像头列表，包含 id、name、location
+    """
+    try:
+        from services.camera_service import CameraService
+        # 从数据库获取摄像头列表
+        camera_list = CameraService.get_camera_list()
+        
+        logger.info(f"摄像头列表请求成功，返回{len(camera_list)}个摄像头")
+        return jsonify({
+            "success": True,
+            "data": camera_list
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取摄像头列表失败: {str(e)}", exc_info=True)
         return jsonify({
             "success": False,
             "error": str(e),
@@ -787,7 +816,7 @@ def get_knowledge_base_list(user_id, role):
 @api_bp.route('/get_device_type_list', methods=['GET'])
 def get_device_type_list():
     """
-    获取设备类型列表
+    获取设备类型列表（轻量接口，只返回id、category、name）
     
     Returns:
         JSON格式的设备类型列表数据
@@ -800,11 +829,8 @@ def get_device_type_list():
             for dt in device_types:
                 type_info = {
                     "id": dt.id,
-                    "type_code": dt.category,
-                    "name": dt.name,
-                    "description": dt.description,
-                    "created_at": dt.created_at.isoformat() if dt.created_at else None,
-                    "updated_at": dt.updated_at.isoformat() if dt.updated_at else None
+                    "category": dt.category,
+                    "name": dt.name
                 }
                 device_type_list.append(type_info)
         
@@ -822,17 +848,54 @@ def get_device_type_list():
             "data": []
         }), 500
 
+@api_bp.route('/get_sensor_type_list', methods=['GET'])
+def get_sensor_type_list():
+    """
+    获取传感器类型列表（轻量接口，只返回id和type_name）
+    
+    Returns:
+        JSON格式的传感器类型列表数据
+    """
+    try:
+        from db_models.sensor_type import SensorType
+        
+        with db_session_factory() as session:
+            sensor_types = session.query(SensorType).order_by(SensorType.id).all()
+            
+            sensor_type_list = []
+            for st in sensor_types:
+                type_info = {
+                    "id": st.id,
+                    "type_name": st.type_name
+                }
+                sensor_type_list.append(type_info)
+        
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": sensor_type_list
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取传感器类型列表失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": []
+        }), 500
+
 @api_bp.route('/get_device_list', methods=['GET'])
 def get_device_list():
     """
-    获取设备列表（支持分页）
-    返回设备完整信息，包括特定设备类型的扩展配置（info字段）
+    获取设备列表（支持分页和搜索）
+    返回设备完整信息，传感器类型信息放在info字段，其他设备类型从device_specific_config获取
     
     Query Parameters:
         status: 设备状态（online/offline，可选）
         pond_id: 养殖池ID（可选）
         control_mode: 控制权限模式（manual_only/ai_only/hybrid，可选）
-        category: 设备类别（sensor/feeder/camera，可选）
+        category: 设备类别（sensor/feeder/camera等，可选）
+        search: 搜索关键词（按设备名称或device_id模糊搜索，可选）
         page: 当前页码（默认1）
         page_size: 每页数量（默认5，最大100）
     
@@ -842,16 +905,14 @@ def get_device_list():
         - pagination: 分页信息
     """
     try:
-        from db_models.sensor import Sensor
         from db_models.sensor_type import SensorType
-        from db_models.feeder import Feeder
-        from db_models.camera import Camera
         
         # 获取查询参数
         status = request.args.get('status')  # online 或 offline
         pond_id = request.args.get('pond_id', type=int)
         control_mode = request.args.get('control_mode')  # manual_only, ai_only, hybrid
-        category = request.args.get('category')  # sensor, feeder, camera
+        category = request.args.get('category')  # sensor, feeder, camera, water_pump, air_blower等
+        search = request.args.get('search')  # 搜索关键词（设备名称或device_id）
         
         # 分页参数
         page = request.args.get('page', 1, type=int)
@@ -866,8 +927,8 @@ def get_device_list():
             page_size = 100
         
         with db_session_factory() as session:
-            # 构建查询
-            query = session.query(Device)
+            # 构建查询（过滤已软删除的设备）
+            query = session.query(Device).filter(Device.is_deleted == False)
             
             # 如果需要按category筛选，需要join device_types表
             if category:
@@ -880,6 +941,16 @@ def get_device_list():
                 query = query.filter(Device.pond_id == pond_id)
             if control_mode:
                 query = query.filter(Device.control_mode == control_mode)
+            
+            # 搜索功能：按设备名称或device_id模糊搜索
+            if search:
+                search_pattern = f"%{search}%"
+                query = query.filter(
+                    or_(
+                        Device.name.like(search_pattern),
+                        Device.device_id.like(search_pattern)
+                    )
+                )
             
             # 计算总数（在分页之前）
             total = query.count()
@@ -903,68 +974,12 @@ def get_device_list():
                 types = session.query(DeviceType).filter(DeviceType.id.in_(device_type_ids)).all()
                 device_types = {dt.id: dt for dt in types}
             
-            # 批量查询扩展表数据
-            device_ids = [d.id for d in devices]
-            
-            # 查询 sensors 和 sensor_types
-            sensors_dict = {}
-            if device_ids:
-                sensors = session.query(Sensor).filter(Sensor.device_id.in_(device_ids)).all()
-                sensor_type_ids = [s.sensor_type_id for s in sensors if s.sensor_type_id]
-                sensor_types_dict = {}
-                if sensor_type_ids:
-                    sensor_types = session.query(SensorType).filter(SensorType.id.in_(sensor_type_ids)).all()
-                    sensor_types_dict = {st.id: st for st in sensor_types}
-                
-                for sensor in sensors:
-                    sensor_type = sensor_types_dict.get(sensor.sensor_type_id)
-                    sensors_dict[sensor.device_id] = {
-                        "id": sensor.id,
-                        "sensor_type_id": sensor.sensor_type_id,
-                        "sensor_type_name": sensor_type.type_name if sensor_type else None,
-                        "metric": sensor_type.metric if sensor_type else None,
-                        "unit": sensor_type.unit if sensor_type else None,
-                        "valid_min": float(sensor_type.valid_min) if sensor_type and sensor_type.valid_min is not None else None,
-                        "valid_max": float(sensor_type.valid_max) if sensor_type and sensor_type.valid_max is not None else None,
-                        "description": sensor_type.description if sensor_type else None,
-                    }
-            
-            # 查询 feeders
-            feeders_dict = {}
-            if device_ids:
-                feeders = session.query(Feeder).filter(Feeder.device_id.in_(device_ids)).all()
-                for feeder in feeders:
-                    feeders_dict[feeder.device_id] = {
-                        "id": feeder.id,
-                        "feed_count": feeder.feed_count,
-                        "feed_portion_weight": float(feeder.feed_portion_weight) if feeder.feed_portion_weight else None,
-                        "capacity_kg": float(feeder.capacity_kg) if feeder.capacity_kg else None,
-                        "feed_type": feeder.feed_type,
-                        "timezone": feeder.timezone,
-                        "network_type": feeder.network_type,
-                        "group_id": feeder.group_id,
-                    }
-            
-            # 查询 cameras
-            cameras_dict = {}
-            if device_ids:
-                cameras = session.query(Camera).filter(Camera.device_id.in_(device_ids)).all()
-                for camera in cameras:
-                    cameras_dict[camera.device_id] = {
-                        "id": camera.id,
-                        "quality": camera.quality,
-                        "connectivity": camera.connectivity,
-                        "temperature": float(camera.temperature) if camera.temperature else None,
-                        "last_update": camera.last_update,
-                        "last_update_time": camera.last_update_time,
-                        "resolution": camera.resolution,
-                        "fps": camera.fps,
-                        "codec": camera.codec,
-                        "stream_url": camera.stream_url,
-                        "recording": camera.recording,
-                        "night_vision": camera.night_vision,
-                        "motion_detection": camera.motion_detection,
-                    }
+            # 批量查询传感器类型信息（仅对传感器设备）
+            sensor_type_ids = [d.sensor_type_id for d in devices if d.sensor_type_id]
+            sensor_types_dict = {}
+            if sensor_type_ids:
+                sensor_types = session.query(SensorType).filter(SensorType.id.in_(sensor_type_ids)).all()
+                sensor_types_dict = {st.id: st for st in sensor_types}
             
             # 构建返回数据
             device_list = []
@@ -980,6 +995,7 @@ def get_device_list():
                     "description": device.description,
                     "ownership": device.ownership,
                     "device_type_id": device.device_type_id,
+                    "sensor_type_id": device.sensor_type_id,
                     "device_type_name": device_type.name if device_type else None,
                     "device_category": device_category,
                     "model": device.model,
@@ -987,11 +1003,8 @@ def get_device_list():
                     "serial_number": device.serial_number,
                     "location": device.location,
                     "pond_id": device.pond_id,
-                    "firmware_version": device.firmware_version,
-                    "hardware_version": device.hardware_version,
-                    "ip_address": device.ip_address,
-                    "mac_address": device.mac_address,
-                    "config_json": device.config_json,
+                    "connection_info": device.connection_info,
+                    "device_specific_config": device.device_specific_config,
                     "tags": device.tags,
                     "status": device.status,
                     "control_mode": device.control_mode,
@@ -999,14 +1012,24 @@ def get_device_list():
                     "updated_at": device.updated_at.isoformat() if device.updated_at else None,
                 }
                 
-                # 根据设备类型添加特殊配置info字段
+                # 构建info字段
                 info = None
-                if device_category == 'sensor' and device.id in sensors_dict:
-                    info = sensors_dict[device.id]
-                elif device_category == 'feeder' and device.id in feeders_dict:
-                    info = feeders_dict[device.id]
-                elif device_category == 'camera' and device.id in cameras_dict:
-                    info = cameras_dict[device.id]
+                if device_category == 'sensor' and device.sensor_type_id:
+                    # 传感器设备：从sensor_types表获取传感器类型信息
+                    sensor_type = sensor_types_dict.get(device.sensor_type_id)
+                    if sensor_type:
+                        info = {
+                            "sensor_type_id": sensor_type.id,
+                            "sensor_type_name": sensor_type.type_name,
+                            "metric": sensor_type.metric,
+                            "unit": sensor_type.unit,
+                            "valid_min": float(sensor_type.valid_min) if sensor_type.valid_min is not None else None,
+                            "valid_max": float(sensor_type.valid_max) if sensor_type.valid_max is not None else None,
+                            "description": sensor_type.description,
+                        }
+                else:
+                    # 其他设备：直接使用device_specific_config
+                    info = device.device_specific_config
                 
                 device_info["info"] = info
                 device_list.append(device_info)
@@ -1119,25 +1142,32 @@ def get_device_list():
 @api_bp.route('/device', methods=['POST'])
 def create_device():
     """
-    创建新设备
+    创建新设备（统一设备表架构）
+    
+    所有设备都存储在统一的devices表中。
+    - 如果是传感器设备（device_type.category='sensor'），必须提供sensor_type_id
+    - 其他设备的特有配置统一存储在device_specific_config字段中
     
     Request Body:
         {
             "name": "设备名称（必需）",
-            "device_type_id": 1,  // 设备类型ID（可选）
-            "description": "设备描述（可选）",
+            "device_type_id": 1,  // 设备类型ID（必需）
             "ownership": "设备归属（必需）",
+            "sensor_type_id": 1,  // 传感器类型ID（仅当设备类型为sensor时必填）
+            "description": "设备描述（可选）",
+            "pond_id": 1,  // 养殖池ID（可选）
+            "location": "安装位置（可选）",
             "model": "设备型号（可选）",
             "manufacturer": "制造商（可选）",
-            "serial_number": "序列号（可选）",
-            "location": "安装位置（可选）",
-            "pond_id": 1,  // 养殖池ID（可选）
-            "ip_address": "IP地址（可选）",
-            "mac_address": "MAC地址（可选）",
-            "status": "active",  // 设备状态（可选，默认active）
-            "switch_status": "off",  // 开关状态（可选，默认off）
-            "priority": "medium",  // 优先级（可选，默认medium）
-            "config_json": {},  // 配置参数JSON（可选）
+            "serial_number": "序列号（可选，唯一）",
+            "connection_info": {  // 设备连接信息（可选，JSON格式，包含连接地址、账户名、密码等）
+                "url": "http://192.168.1.100",
+                "username": "admin",
+                "password": "password"
+            },
+            "status": "online",  // 设备状态（可选，默认online）
+            "control_mode": "hybrid",  // 控制权限模式（可选，默认hybrid）
+            "device_specific_config": {},  // 设备专属配置JSON（可选，如喂食机的feed_count、摄像头的resolution等）
             "tags": "标签1,标签2"  // 标签（可选）
         }
     
@@ -1169,18 +1199,46 @@ def create_device():
                 "data": None
             }), 400
         
+        if not data.get('device_type_id'):
+            return jsonify({
+                "code": 400,
+                "message": "缺少必填字段: device_type_id",
+                "data": None
+            }), 400
+        
         with db_session_factory() as session:
-            # 验证设备类型是否存在（如果提供了device_type_id）
-            if data.get('device_type_id'):
-                device_type = session.query(DeviceType).filter_by(
-                    id=data['device_type_id']
-                ).first()
-                if not device_type:
+            # 验证设备类型是否存在
+            device_type = session.query(DeviceType).filter_by(
+                id=data['device_type_id']
+            ).first()
+            if not device_type:
+                return jsonify({
+                    "code": 400,
+                    "message": f"设备类型ID {data['device_type_id']} 不存在",
+                    "data": None
+                }), 400
+            
+            # 如果是传感器设备，sensor_type_id是必填的
+            sensor_type_id = data.get('sensor_type_id')
+            if device_type.category == 'sensor':
+                if not sensor_type_id:
                     return jsonify({
                         "code": 400,
-                        "message": f"设备类型ID {data['device_type_id']} 不存在",
+                        "message": "传感器设备必须提供 sensor_type_id",
                         "data": None
                     }), 400
+                
+                from db_models.sensor_type import SensorType
+                sensor_type = session.query(SensorType).filter_by(id=sensor_type_id).first()
+                if not sensor_type:
+                    return jsonify({
+                        "code": 400,
+                        "message": f"传感器类型ID {sensor_type_id} 不存在",
+                        "data": None
+                    }), 400
+            else:
+                # 非传感器设备，sensor_type_id应该为空
+                sensor_type_id = None
             
             # 生成唯一的device_id（UUID格式）
             device_id = str(uuid.uuid4())
@@ -1202,35 +1260,24 @@ def create_device():
                         "data": None
                     }), 400
             
-            # 获取设备状态，用于自动设置 retired_at
-            device_status = data.get('status', 'active')
-            
-            # 创建设备对象（需要提供所有字段，可选字段设为None）
+            # 创建设备对象（所有设备都存储在devices表）
             device = Device(
                 device_id=device_id,
                 name=data['name'],
                 ownership=data['ownership'],
-                description=data.get('description'),
-                device_type_id=data.get('device_type_id'),
+                device_type_id=data['device_type_id'],
+                sensor_type_id=sensor_type_id,  # 仅传感器设备有值，其他为None
+                pond_id=data.get('pond_id'),
+                location=data.get('location'),
                 model=data.get('model'),
                 manufacturer=data.get('manufacturer'),
                 serial_number=data.get('serial_number'),
-                location=data.get('location'),
-                pond_id=data.get('pond_id'),
-                firmware_version=data.get('firmware_version'),
-                hardware_version=data.get('hardware_version'),
-                ip_address=data.get('ip_address'),
-                mac_address=data.get('mac_address'),
-                config_json=data.get('config_json'),
+                connection_info=data.get('connection_info'),  # 设备连接信息
+                status=data.get('status', 'online'),
+                control_mode=data.get('control_mode', 'hybrid'),
+                device_specific_config=data.get('device_specific_config'),  # 设备专属配置统一存储在device_specific_config
                 tags=data.get('tags'),
-                status=device_status,
-                switch_status=data.get('switch_status', 'off'),
-                priority=data.get('priority', 'medium'),
-                installed_at=datetime.fromisoformat(data['installed_at']) if data.get('installed_at') else None,
-                last_maintenance_at=datetime.fromisoformat(data['last_maintenance_at']) if data.get('last_maintenance_at') else None,
-                next_maintenance_at=datetime.fromisoformat(data['next_maintenance_at']) if data.get('next_maintenance_at') else None,
-                warranty_expires_at=datetime.fromisoformat(data['warranty_expires_at']) if data.get('warranty_expires_at') else None,
-                retired_at=datetime.now() if device_status == 'retired' else None  # 如果状态为retired，自动设置退役时间
+                description=data.get('description'),
             )
             
             session.add(device)
@@ -1267,6 +1314,8 @@ def create_device():
 def update_device(device_id):
     """
     更新设备信息
+    只支持更新以下字段：description（描述）、name（名称）、location（位置）、
+    status（状态）、device_specific_config（设备专属配置）、connection_info（连接信息）、pond_id（养殖池）、control_mode（权限分配）
     
     Args:
         device_id: 设备ID（可以是数据库主键id或device_id UUID）
@@ -1276,8 +1325,16 @@ def update_device(device_id):
         {
             "name": "新设备名称",
             "description": "新描述",
-            "status": "active",
-            // ... 其他可更新字段
+            "location": "新位置",
+            "status": "online",  // online 或 offline
+            "device_specific_config": {},  // 设备专属配置JSON
+            "connection_info": {  // 设备连接信息JSON
+                "url": "http://192.168.1.100",
+                "username": "admin",
+                "password": "password"
+            },
+            "pond_id": 1,  // 养殖池ID
+            "control_mode": "hybrid"  // manual_only, ai_only, hybrid
         }
     
     Returns:
@@ -1294,85 +1351,69 @@ def update_device(device_id):
         data = request.get_json()
         
         with db_session_factory() as session:
-            # 查找设备
+            # 查找设备（排除已软删除的设备）
             try:
                 device_id_int = int(device_id)
-                device = session.query(Device).filter(Device.id == device_id_int).first()
+                device = session.query(Device).filter(
+                    Device.id == device_id_int,
+                    Device.is_deleted == False
+                ).first()
             except ValueError:
-                device = session.query(Device).filter(Device.device_id == device_id).first()
+                device = session.query(Device).filter(
+                    Device.device_id == device_id,
+                    Device.is_deleted == False
+                ).first()
             
             if not device:
                 return jsonify({
                     "code": 404,
-                    "message": f"设备 {device_id} 不存在",
+                    "message": f"设备 {device_id} 不存在或已删除",
                     "data": None
                 }), 404
             
-            # 验证设备类型（如果提供了）
-            if data.get('device_type_id'):
-                device_type = session.query(DeviceType).filter_by(
-                    id=data['device_type_id']
-                ).first()
-                if not device_type:
+            # 只允许更新以下字段：description, name, location, status, device_specific_config, connection_info, pond_id, control_mode
+            allowed_fields = ['description', 'name', 'location', 'status', 'device_specific_config', 'connection_info', 'pond_id', 'control_mode']
+            
+            # 检查是否有不允许更新的字段
+            invalid_fields = [field for field in data.keys() if field not in allowed_fields]
+            if invalid_fields:
+                return jsonify({
+                    "code": 400,
+                    "message": f"不允许更新以下字段: {', '.join(invalid_fields)}。只允许更新: {', '.join(allowed_fields)}",
+                    "data": None
+                }), 400
+            
+            # 验证状态值（如果提供了）
+            if 'status' in data and data['status'] not in ['online', 'offline']:
+                return jsonify({
+                    "code": 400,
+                    "message": "status 必须是 'online' 或 'offline'",
+                    "data": None
+                }), 400
+            
+            # 验证控制模式值（如果提供了）
+            if 'control_mode' in data and data['control_mode'] not in ['manual_only', 'ai_only', 'hybrid']:
+                return jsonify({
+                    "code": 400,
+                    "message": "control_mode 必须是 'manual_only', 'ai_only' 或 'hybrid'",
+                    "data": None
+                }), 400
+            
+            # 验证pond_id（如果提供了）
+            if 'pond_id' in data and data['pond_id'] is not None:
+                from db_models.pond import Pond
+                pond = session.query(Pond).filter_by(id=data['pond_id']).first()
+                if not pond:
                     return jsonify({
                         "code": 400,
-                        "message": f"设备类型ID {data['device_type_id']} 不存在",
+                        "message": f"养殖池ID {data['pond_id']} 不存在",
                         "data": None
                     }), 400
             
-            # 验证序列号（如果提供了且与现有不同）
-            if data.get('serial_number') and data['serial_number'] != device.serial_number:
-                existing_serial = session.query(Device).filter(
-                    Device.serial_number == data['serial_number'],
-                    Device.id != device.id
-                ).first()
-                if existing_serial:
-                    return jsonify({
-                        "code": 400,
-                        "message": f"序列号 {data['serial_number']} 已被其他设备使用",
-                        "data": None
-                    }), 400
-            
-            # 更新字段
-            updatable_fields = [
-                'name', 'description', 'ownership', 'device_type_id', 'model',
-                'manufacturer', 'serial_number', 'location', 'pond_id',
-                'firmware_version', 'hardware_version', 'ip_address', 'mac_address',
-                'config_json', 'tags', 'status', 'switch_status', 'priority'
-            ]
-            
-            # 记录更新前的状态，用于判断 retired_at 的变化
-            old_status = device.status
-            
-            for field in updatable_fields:
+            # 更新允许的字段
+            for field in allowed_fields:
                 if field in data:
                     setattr(device, field, data[field])
-            
-            # 根据设备状态自动处理 retired_at
-            # 如果状态变为 retired，设置退役时间；如果从 retired 变为其他状态，清空退役时间
-            if 'status' in data:
-                new_status = data['status']
-                if new_status == 'retired' and old_status != 'retired':
-                    # 状态变为 retired，设置退役时间为当前时间
-                    device.retired_at = datetime.now()
-                elif new_status != 'retired' and old_status == 'retired':
-                    # 状态从 retired 变为其他状态，清空退役时间
-                    device.retired_at = None
-            
-            # 处理时间字段（移除 retired_at，因为它由状态自动管理）
-            time_fields = {
-                'installed_at': 'installed_at',
-                'last_maintenance_at': 'last_maintenance_at',
-                'next_maintenance_at': 'next_maintenance_at',
-                'warranty_expires_at': 'warranty_expires_at'
-            }
-            
-            for key, attr in time_fields.items():
-                if key in data:
-                    if data[key]:
-                        setattr(device, attr, datetime.fromisoformat(data[key]))
-                    else:
-                        setattr(device, attr, None)
             
             session.commit()
             
@@ -1406,7 +1447,7 @@ def update_device(device_id):
 @api_bp.route('/device/<device_id>', methods=['DELETE'])
 def delete_device(device_id):
     """
-    删除设备（软删除，设置retired_at字段）
+    删除设备（软删除，设置is_deleted字段）
     
     Args:
         device_id: 设备ID（可以是数据库主键id或device_id UUID）
@@ -1430,9 +1471,16 @@ def delete_device(device_id):
                     "data": None
                 }), 404
             
-            # 软删除：设置retired_at和status
-            device.retired_at = datetime.now()
-            device.status = 'retired'
+            if device.is_deleted:
+                return jsonify({
+                    "code": 400,
+                    "message": f"设备 {device_id} 已被删除",
+                    "data": None
+                }), 400
+            
+            # 软删除：设置is_deleted为True
+            device.is_deleted = True
+            device.status = 'offline'
             
             session.commit()
             

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 from sqlalchemy import (
     String,
@@ -37,7 +37,7 @@ class SensorType(Base):
     metric: Mapped[Optional[str]] = mapped_column(
         String(64), 
         unique=True, 
-        comment="metric 标识符（do/ph/temperature/turbidity/liquid_level/ammonia/nitrite/circulation）"
+        comment="metric 标识符（do/ph/temperature/turbidity/water_level/ammonia/nitrite/circulation）"
     )
     
     # 数据单位（%/mm/°C/NTU/mg/L）
@@ -83,5 +83,5 @@ class SensorType(Base):
         init=False
     )
 
-    # ORM 关系：一个类型可以对应多个传感器设备 
-    sensors: Mapped[list["Sensor"]] = relationship(back_populates="sensor_type", init=False)
+    # ORM 关系：一个传感器类型可以对应多个设备（当device_type.category=sensor时） 
+    devices: Mapped[List["Device"]] = relationship(back_populates="sensor_type", init=False)

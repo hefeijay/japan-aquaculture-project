@@ -11,7 +11,7 @@ import logging
 from sqlalchemy import func, or_
 
 from db_models.db_session import db_session_factory
-from db_models.sensor import Sensor
+from db_models.device import Device, DeviceType
 from db_models.sensor_reading import SensorReading
 from db_models.sensor_type import SensorType
 
@@ -31,19 +31,24 @@ class SensorService:
         """
         try:
             with db_session_factory() as session:
-                sensors = session.query(Sensor).join(SensorType).all()
+                # 查询所有传感器类型的设备
+                sensors = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(DeviceType.category == 'sensor')\
+                    .outerjoin(SensorType, Device.sensor_type_id == SensorType.id)\
+                    .all()
                 
                 sensor_list = []
                 for sensor in sensors:
                     sensor_info = {
                         "id": sensor.id,
-                        "sensor_id": sensor.sensor_id,
+                        "sensor_id": sensor.device_id,  # 使用 device_id 替代 sensor_id
                         "name": sensor.name,
                         "pond_id": sensor.pond_id,
                         "sensor_type_id": sensor.sensor_type_id,
                         "model": sensor.model,
                         "status": sensor.status,
-                        "installed_at": sensor.installed_at.isoformat() if sensor.installed_at else None,
+                        "installed_at": None,  # Device 表中没有 installed_at 字段
                         "sensor_type_name": sensor.sensor_type.type_name if sensor.sensor_type else None,
                         "unit": sensor.sensor_type.unit if sensor.sensor_type else None
                     }
@@ -58,10 +63,10 @@ class SensorService:
     @classmethod
     def get_sensor_readings_by_sensor_id(cls, sensor_id: int, hours: int = 1) -> List[Dict[str, Any]]:
         """
-        根据传感器ID获取指定时间范围内的读数数据
+        根据传感器ID（设备ID）获取指定时间范围内的读数数据
         
         Args:
-            sensor_id: 传感器ID
+            sensor_id: 传感器设备ID
             hours: 获取多少小时内的数据，默认1小时
             
         Returns:
@@ -74,20 +79,35 @@ class SensorService:
                 start_time = end_time - timedelta(hours=hours)
                 
                 readings = session.query(SensorReading)\
-                    .filter(SensorReading.sensor_id == sensor_id)\
-                    .filter(SensorReading.recorded_at >= start_time)\
-                    .filter(SensorReading.recorded_at <= end_time)\
-                    .order_by(SensorReading.recorded_at.desc())\
+                    .filter(SensorReading.device_id == sensor_id)\
+                    .filter(or_(
+                        SensorReading.recorded_at >= start_time,
+                        SensorReading.ts_utc >= start_time,
+                        SensorReading.created_at >= start_time
+                    ))\
+                    .filter(or_(
+                        SensorReading.recorded_at <= end_time,
+                        SensorReading.ts_utc <= end_time,
+                        SensorReading.created_at <= end_time
+                    ))\
+                    .order_by(
+                        func.coalesce(
+                            SensorReading.ts_utc,
+                            SensorReading.recorded_at,
+                            SensorReading.created_at
+                        ).desc()
+                    )\
                     .all()
                 
                 reading_list = []
                 for reading in readings:
+                    timestamp = reading.ts_utc or reading.recorded_at or reading.created_at
                     reading_info = {
                         "id": reading.id,
-                        "sensor_id": reading.sensor_id,
+                        "sensor_id": reading.device_id,  # 使用 device_id
                         "value": reading.value,
-                        "recorded_at": reading.recorded_at.isoformat(),
-                        "created_at": None
+                        "recorded_at": timestamp.isoformat() if timestamp else None,
+                        "created_at": reading.created_at.isoformat() if reading.created_at else None
                     }
                     reading_list.append(reading_info)
                 
@@ -114,27 +134,44 @@ class SensorService:
                 end_time = datetime.now()
                 start_time = end_time - timedelta(hours=hours)
                 
-                # 获取所有传感器及其读数
-                readings = session.query(SensorReading, Sensor, SensorType)\
-                    .join(Sensor, SensorReading.sensor_id == Sensor.id)\
-                    .join(SensorType, Sensor.sensor_type_id == SensorType.id)\
-                    .filter(SensorReading.recorded_at >= start_time)\
-                    .filter(SensorReading.recorded_at <= end_time)\
-                    .order_by(SensorReading.recorded_at.desc())\
+                # 获取所有传感器及其读数（只查询传感器类型的设备）
+                readings = session.query(SensorReading, Device, SensorType)\
+                    .join(Device, SensorReading.device_id == Device.id)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(DeviceType.category == 'sensor')\
+                    .outerjoin(SensorType, Device.sensor_type_id == SensorType.id)\
+                    .filter(or_(
+                        SensorReading.recorded_at >= start_time,
+                        SensorReading.ts_utc >= start_time,
+                        SensorReading.created_at >= start_time
+                    ))\
+                    .filter(or_(
+                        SensorReading.recorded_at <= end_time,
+                        SensorReading.ts_utc <= end_time,
+                        SensorReading.created_at <= end_time
+                    ))\
+                    .order_by(
+                        func.coalesce(
+                            SensorReading.ts_utc,
+                            SensorReading.recorded_at,
+                            SensorReading.created_at
+                        ).desc()
+                    )\
                     .all()
                 
                 # 按传感器类型分组
                 grouped_readings = {}
-                for reading, sensor, sensor_type in readings:
-                    type_name = sensor_type.type_name
+                for reading, device, sensor_type in readings:
+                    type_name = sensor_type.type_name if sensor_type else "未知类型"
                     if type_name not in grouped_readings:
                         grouped_readings[type_name] = []
                     
+                    timestamp = reading.ts_utc or reading.recorded_at or reading.created_at
                     reading_info = {
-                        "sensor_id": sensor.id,
+                        "sensor_id": device.id,
                         "value": reading.value,
-                        "recorded_at": reading.recorded_at.isoformat(),
-                        "sensor_name": sensor.name
+                        "recorded_at": timestamp.isoformat() if timestamp else None,
+                        "sensor_name": device.name
                     }
                     grouped_readings[type_name].append(reading_info)
                 
@@ -154,20 +191,31 @@ class SensorService:
         """
         try:
             with db_session_factory() as session:
-                # 获取每个传感器的最新读数
+                # 获取每个传感器的最新读数（只查询传感器类型的设备）
                 latest_readings = {}
-                sensors = session.query(Sensor).join(SensorType).all()
+                sensors = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(DeviceType.category == 'sensor')\
+                    .outerjoin(SensorType, Device.sensor_type_id == SensorType.id)\
+                    .all()
                 
                 for sensor in sensors:
                     latest_reading = session.query(SensorReading)\
-                        .filter(SensorReading.sensor_id == sensor.id)\
-                        .order_by(SensorReading.recorded_at.desc())\
+                        .filter(SensorReading.device_id == sensor.id)\
+                        .order_by(
+                            func.coalesce(
+                                SensorReading.ts_utc,
+                                SensorReading.recorded_at,
+                                SensorReading.created_at
+                            ).desc()
+                        )\
                         .first()
                     
-                    if latest_reading:
+                    if latest_reading and sensor.sensor_type:
+                        timestamp = latest_reading.ts_utc or latest_reading.recorded_at or latest_reading.created_at
                         latest_readings[sensor.sensor_type.type_name] = {
                             "value": latest_reading.value,
-                            "recorded_at": latest_reading.recorded_at.isoformat(),
+                            "recorded_at": timestamp.isoformat() if timestamp else None,
                             "sensor_name": sensor.name
                         }
                 
@@ -221,11 +269,13 @@ class SensorService:
                         continue
                     
                     # 通过 JOIN 查询该 metric 对应的所有读数
-                    # sensor_readings → sensors → sensor_types
+                    # sensor_readings → devices → device_types (filter category='sensor') → sensor_types
                     # 使用 COALESCE 优先使用 ts_utc，如果为空则使用 recorded_at，再为空则使用 created_at
                     readings = session.query(SensorReading)\
-                        .join(Sensor, SensorReading.sensor_id == Sensor.id)\
-                        .join(SensorType, Sensor.sensor_type_id == SensorType.id)\
+                        .join(Device, SensorReading.device_id == Device.id)\
+                        .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                        .filter(DeviceType.category == 'sensor')\
+                        .outerjoin(SensorType, Device.sensor_type_id == SensorType.id)\
                         .filter(SensorType.metric == metric)\
                         .filter(or_(
                             SensorReading.recorded_at.isnot(None),
@@ -250,7 +300,7 @@ class SensorService:
                         reading_info = {
                             "value": reading.value,
                             "recorded_at": timestamp.isoformat() if timestamp else None,
-                            "type_name": reading.type_name or sensor_type.type_name,
+                            "type_name": sensor_type.type_name,  # SensorReading 没有 type_name 字段
                             "metric": metric,
                             "unit": reading.unit or sensor_type.unit,
                             "description": reading.description or sensor_type.description

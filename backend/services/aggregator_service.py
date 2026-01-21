@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 from config.settings import Config
 from db_models.db_session import db_session_factory
 from db_models.sensor_reading import SensorReading
-from db_models.sensor import Sensor
 from db_models.sensor_type import SensorType
+from db_models.device import Device
 from db_models.message_queue import MessageQueue
 from db_models.ai_decision import MessageType as MessageTypeModel
 from db_models.shrimp_stats import ShrimpStats
@@ -124,11 +124,11 @@ class AggregatorService:
             logger.info(f"Aggregator 写入 message_queue: {message_id}")
 
     def _fetch_sensor_payload(self, session: Session, start_ts: datetime, end_ts: datetime) -> List[Dict[str, Any]]:
-        # 查询窗口内的读数，联表拿到类型与池塘信息，直接返回原始记录列表
+        # 查询窗口内的读数，联表拿到设备与传感器类型信息，直接返回原始记录列表
         readings = (
-            session.query(SensorReading, Sensor, SensorType)
-            .join(Sensor, SensorReading.sensor_id == Sensor.id)
-            .join(SensorType, Sensor.sensor_type_id == SensorType.id)
+            session.query(SensorReading, Device, SensorType)
+            .join(Device, SensorReading.device_id == Device.id)
+            .outerjoin(SensorType, Device.sensor_type_id == SensorType.id)
             .filter(and_(
                 SensorReading.recorded_at >= func.date_sub(func.now(), text(f"INTERVAL {int((end_ts - start_ts).total_seconds() // 60)} MINUTE")),
                 SensorReading.recorded_at <= func.now()
@@ -137,13 +137,14 @@ class AggregatorService:
             .all()
         )
         payload: List[Dict[str, Any]] = []
-        for sr, sensor, st in readings:
+        for sr, device, st in readings:
             payload.append({
-                "sensor_id": sr.sensor_id,
-                "sensor_name": getattr(sensor, "name", None),
-                "sensor_type": st.type_name,
-                "unit": st.unit,
-                "pond_id": str(getattr(sensor, "pond_id", "")),
+                "device_id": sr.device_id,
+                "device_name": getattr(device, "name", None),
+                "sensor_type": st.type_name if st else None,
+                "metric": sr.metric,  # 使用快照字段
+                "unit": sr.unit or (st.unit if st else None),  # 优先使用快照字段
+                "pond_id": str(sr.pond_id) if sr.pond_id else "",  # 使用快照字段
                 "value": sr.value,
                 "recorded_at": sr.recorded_at.isoformat() if getattr(sr, "recorded_at", None) else None
             })

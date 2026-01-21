@@ -124,9 +124,9 @@ def receive_sensor_data():
     
     请求体格式：
     {
-        "sensor_id": "1",            // 必填，传感器主键ID（字符串形式的整数，对应sensors.id）
+        "sensor_id": "1",            // 必填，传感器设备主键ID（字符串形式的整数，对应devices.id）
         "value": 25.5,               // 必填，传感器读数值
-        "pool_id": "1",              // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id，如未提供则从sensor获取）
+        "pool_id": "1",              // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id，如未提供则从device获取）
         "batch_id": "1",             // 可选，批次主键ID（字符串形式的整数，对应batches.id）
         "unit": "°C",                // 可选，单位
         "timestamp": 1234567890000,  // 可选，Unix时间戳（毫秒）
@@ -134,8 +134,8 @@ def receive_sensor_data():
     }
     
     注意：
-    - metric 和 type_name 将从 sensor_type 表自动获取，无需传入
-    - 异常值检测使用 sensor_type 表的 valid_min 和 valid_max 字段
+    - metric 将从 device.sensor_type_id 关联的 sensor_types 表自动获取，无需传入
+    - 异常值检测使用 sensor_types 表的 valid_min 和 valid_max 字段
     """
     try:
         data = request.get_json()
@@ -153,7 +153,7 @@ def receive_sensor_data():
                 "error": "缺少必填字段: sensor_id, value"
             }), 400
         # 提取数据
-        sensor_id_str = str(data['sensor_id'])  # 传感器主键ID（字符串）
+        sensor_id_str = str(data['sensor_id'])  # 传感器设备主键ID（字符串）
         value = float(data['value'])
         unit = data.get('unit')
         batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
@@ -200,30 +200,37 @@ def receive_sensor_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 检查并确保传感器记录存在（通过主键ID查找）
-            from db_models.sensor import Sensor
+            # 从统一设备表查找传感器设备（通过主键ID查找，需验证设备类型为sensor）
+            from db_models.device import Device, DeviceType
+            from db_models.sensor_type import SensorType
             from db_models.pond import Pond
             from db_models.batch import Batch
             
-            # 通过主键ID查找传感器
-            sensor = session.query(Sensor).filter(Sensor.id == sensor_id).first()
-            if not sensor:
+            # 通过主键ID查找设备，并验证是传感器类型
+            device = session.query(Device)\
+                .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                .filter(Device.id == sensor_id)\
+                .filter(Device.is_deleted == False)\
+                .filter(DeviceType.category == 'sensor')\
+                .first()
+            
+            if not device:
                 return jsonify({
                     "success": False,
-                    "error": f"传感器不存在: sensor_id={sensor_id}"
+                    "error": f"传感器设备不存在或已删除: sensor_id={sensor_id}"
                 }), 404
             
             # 初始化数据库ID变量
             pond_db_id = None
             batch_db_id = None
             
-            # 获取 pond_id（如果请求中没有提供，从 sensor 获取）
+            # 获取 pond_id（如果请求中没有提供，从 device 获取）
             if pond_id is None:
-                pond_db_id = sensor.pond_id
+                pond_db_id = device.pond_id
                 if pond_db_id is None:
                     return jsonify({
                         "success": False,
-                        "error": f"传感器未关联养殖池且请求中未提供 pool_id: sensor_id={sensor_id}"
+                        "error": f"传感器设备未关联养殖池且请求中未提供 pool_id: sensor_id={sensor_id}"
                     }), 400
             else:
                 # 如果提供了 pond_id（主键ID），验证养殖池是否存在
@@ -246,20 +253,23 @@ def receive_sensor_data():
                 batch_db_id = batch.id
             
             # ===== 从 sensor_type 获取类型信息（用于快照字段）=====
-            sensor_type_name = None
+            sensor_metric = None
             sensor_unit = None
             is_anomaly = False
             valid_min = None
             valid_max = None
             
-            if sensor.sensor_type:
+            # 通过 device.sensor_type_id 获取传感器类型信息
+            if device.sensor_type_id:
+                sensor_type = session.query(SensorType).filter(SensorType.id == device.sensor_type_id).first()
+                if sensor_type:
                 # 获取快照字段数据
-                sensor_type_name = sensor.sensor_type.type_name
-                sensor_unit = sensor.sensor_type.unit
+                    sensor_metric = sensor_type.metric
+                    sensor_unit = sensor_type.unit
                 
                 # 获取有效范围用于异常检测
-                valid_min = sensor.sensor_type.valid_min
-                valid_max = sensor.sensor_type.valid_max
+                    valid_min = sensor_type.valid_min
+                    valid_max = sensor_type.valid_max
                 
                 # 判断值是否在有效范围内
                 if valid_min is not None and value < valid_min:
@@ -274,16 +284,16 @@ def receive_sensor_data():
             
             # 生成校验和
             checksum_data = {
-                'sensor_id': sensor.id,
+                'device_id': device.id,
                 'value': value,
                 'pond_id': pond_db_id,
                 'ts_utc': ts_utc.isoformat() if ts_utc else None
             }
             checksum = DataCleaningService.generate_checksum(checksum_data)
             
-            # 创建 SensorReading 对象（只传入 init=True 的字段）
+            # 创建 SensorReading 对象（直接使用 device.id）
             reading = SensorReading(
-                sensor_id=sensor.id,  # 使用数据库主键
+                device_id=device.id,  # 直接使用设备主键
                 pond_id=pond_db_id,   # 必填字段，使用数据库主键
                 value=value
             )
@@ -307,19 +317,17 @@ def receive_sensor_data():
                 # 否则使用从 sensor_type 获取的 unit
                 reading.unit = sensor_unit
             
-            if sensor_type_name is not None:
-                # 设置 type_name 快照字段
-                reading.type_name = sensor_type_name
+            if sensor_metric is not None:
+                # 设置 metric 快照字段
+                reading.metric = sensor_metric
             
-            if quality_flag is not None:
                 reading.quality_flag = quality_flag
-            if checksum is not None:
                 reading.checksum = checksum
             
             session.add(reading)
             session.commit()
             
-            logger.info(f"传感器数据接收成功: sensor_id={sensor_id}, value={value}, pond_id={pond_db_id}, batch_id={batch_db_id}, type_name={sensor_type_name}, quality_flag={quality_flag}")
+            logger.info(f"传感器数据接收成功: sensor_id={sensor_id}, value={value}, pond_id={pond_db_id}, batch_id={batch_db_id}, metric={sensor_metric}, quality_flag={quality_flag}")
             
             return jsonify({
                 "success": True,
@@ -353,7 +361,7 @@ def receive_feeder_data():
     
     请求体格式：
     {
-        "feeder_id": "1",  // 必填，喂食机主键ID（字符串形式的整数，对应feeders.id）
+        "feeder_id": "1",  // 必填，喂食机设备主键ID（字符串形式的整数，对应devices.id）
         "batch_id": "1",  // 可选，批次主键ID（字符串形式的整数，对应batches.id）
         "pool_id": "1",  // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id）
         "feed_amount_g": 500.0,
@@ -380,7 +388,7 @@ def receive_feeder_data():
             }), 400
         
         # 提取数据
-        feeder_id_str = str(data['feeder_id'])  # 喂食机主键ID（字符串）
+        feeder_id_str = str(data['feeder_id'])  # 喂食机设备主键ID（字符串）
         batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
         pond_id_str = data.get('pool_id')  # 养殖池主键ID（字符串）
         feed_amount_g = data.get('feed_amount_g')
@@ -429,30 +437,36 @@ def receive_feeder_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 检查并确保喂食机记录存在（通过主键ID查找）
-            from db_models.feeder import Feeder
+            # 从统一设备表查找喂食机设备（通过主键ID查找，需验证设备类型为feeder）
+            from db_models.device import Device, DeviceType
             from db_models.pond import Pond
             from db_models.batch import Batch
             
-            # 通过主键ID查找喂食机
-            feeder = session.query(Feeder).filter(Feeder.id == feeder_id).first()
-            if not feeder:
+            # 通过主键ID查找设备，并验证是喂食机类型
+            device = session.query(Device)\
+                .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                .filter(Device.id == feeder_id)\
+                .filter(Device.is_deleted == False)\
+                .filter(DeviceType.category == 'feeder')\
+                .first()
+            
+            if not device:
                 return jsonify({
                     "success": False,
-                    "error": f"喂食机不存在: feeder_id={feeder_id}"
+                    "error": f"喂食机设备不存在或已删除: feeder_id={feeder_id}"
                 }), 404
             
             # 初始化数据库ID变量
             pond_db_id = None
             batch_db_id = None
             
-            # 获取 pond_id（如果请求中没有提供，从 feeder 获取）
+            # 获取 pond_id（如果请求中没有提供，从 device 获取）
             if pond_id is None:
-                pond_db_id = feeder.pond_id
+                pond_db_id = device.pond_id
                 if pond_db_id is None:
                     return jsonify({
                         "success": False,
-                        "error": f"喂食机未关联养殖池且请求中未提供 pool_id: feeder_id={feeder_id}"
+                        "error": f"喂食机设备未关联养殖池且请求中未提供 pool_id: feeder_id={feeder_id}"
                     }), 400
             else:
                 # 如果提供了 pond_id（主键ID），验证养殖池是否存在
@@ -476,16 +490,16 @@ def receive_feeder_data():
             
             # 生成校验和
             checksum_data = {
-                'feeder_id': feeder.id,
+                'device_id': device.id,
                 'feed_amount_g': float(feed_amount_g) if feed_amount_g else None,
                 'pond_id': pond_db_id,
                 'ts_utc': ts_utc.isoformat() if ts_utc else None
             }
             checksum = DataCleaningService.generate_checksum(checksum_data)
             
-            # 创建对象（只传入 init=True 的字段）
+            # 创建对象（直接使用 device.id）
             feeder_log = FeederLog(
-                feeder_id=feeder.id,  # 使用数据库主键
+                device_id=device.id,  # 直接使用设备主键
                 pond_id=pond_db_id,   # 必填字段，使用数据库主键
                 ts_utc=ts_utc,        # 必填字段
                 status=status         # 有默认值，但可以传入
@@ -510,13 +524,13 @@ def receive_feeder_data():
             session.add(feeder_log)
             session.commit()
             
-            logger.info(f"喂食机数据接收成功: feeder_id={feeder_id}, feed_amount_g={feed_amount_g}, pond_id={pond_db_id}, batch_id={batch_db_id}")
+            logger.info(f"喂食机数据接收成功: feeder_id={feeder_id} (device.id), feed_amount_g={feed_amount_g}, pond_id={pond_db_id}, batch_id={batch_db_id}")
             
             return jsonify({
                 "success": True,
                 "data": {
                     "id": feeder_log.id,
-                    "feeder_id": feeder_id,
+                    "feeder_id": feeder_id,  # 返回的还是输入的feeder_id（即device.id）
                     "status": feeder_log.status
                 },
                 "timestamp": int(time.time() * 1000)

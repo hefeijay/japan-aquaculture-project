@@ -3,6 +3,7 @@
 """
 喂食机运行记录ORM模型
 对应 feeder_logs 表，存储喂食机运行记录
+直接关联devices.id
 """
 
 from typing import Optional
@@ -14,7 +15,6 @@ from sqlalchemy import (
     Integer,
     String,
     DECIMAL,
-    Enum,
     Text,
     TIMESTAMP,
     Index,
@@ -29,12 +29,12 @@ from .base import Base
 class FeederLog(Base):
     """
     喂食机运行记录表
-    pond_id为快照字段，优化LLM查询和保证历史数据一致性
+    直接关联devices.id。pond_id为快照字段，优化LLM查询和保证历史数据一致性
     """
     __tablename__ = "feeder_logs"
     __table_args__ = (
-        Index("idx_fl_feeder_ts", "feeder_id", "ts_utc"),
-        Index("idx_fl_pond_ts", "pond_id", "ts_utc"),
+        Index("idx_feeder_log_device_ts", "device_id", "ts_utc"),
+        Index("idx_feeder_log_pond_ts", "pond_id", "ts_utc"),
     )
     
     # 主键ID
@@ -46,20 +46,20 @@ class FeederLog(Base):
         init=False
     )
     
-    # 喂食机ID（FK）
-    feeder_id: Mapped[int] = mapped_column(
+    # 设备ID（FK → devices.id）- 直接关联统一设备表
+    device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("feeders.id"),
+        ForeignKey("devices.id"),
         nullable=False,
-        comment="喂食机ID（FK）"
+        comment="设备ID（FK → devices.id）"
     )
     
-    # 所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化
+    # 所属养殖池ID（FK）- 快照字段，记录投喂时的池位
     pond_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("ponds.id"),
         nullable=False,
-        comment="所属养殖池ID（FK）- 快照字段，记录投喂时的池位，用于历史数据一致性和LLM查询优化"
+        comment="所属养殖池ID（FK）- 快照字段，记录投喂时的池位"
     )
     
     # 批次ID（FK，关联到batches表的主键id）
@@ -100,10 +100,10 @@ class FeederLog(Base):
     
     # 状态（ok/warning/error）
     status: Mapped[str] = mapped_column(
-        Enum('ok', 'warning', 'error', name='feeder_status_enum'),
+        String(20),
         nullable=False,
         default='ok',
-        comment="状态"
+        comment="状态（ok/warning/error）"
     )
     
     # 剩余饵料估计（克）
@@ -147,10 +147,6 @@ class FeederLog(Base):
     )
     
     # ORM 关系
-    feeder: Mapped["Feeder"] = relationship(back_populates="feeder_logs", init=False)
+    device: Mapped["Device"] = relationship(back_populates="feeder_logs", init=False)
     pond: Mapped["Pond"] = relationship(back_populates="feeder_logs", init=False)
     batch: Mapped[Optional["Batch"]] = relationship(init=False)
-
-
-
-

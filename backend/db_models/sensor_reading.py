@@ -21,13 +21,17 @@ from .base import Base
  
 class SensorReading(Base): 
     """ 
-    统一传感器读数表
-    存储所有类型传感器的测量数据。pond_id/type_name为快照字段便于查询
+    传感器读数表
+    直接关联devices.id，metric为快照字段便于按类型查询。
+    pond_id为快照字段，记录数据产生时的池位
     """ 
     __tablename__ = "sensor_readings" 
     __table_args__ = ( 
-        # 为最常见的查询（查询某个传感器在一段时间内的数据）建立复合索引 
-        Index("idx_sensor_id_recorded_at", "sensor_id", "recorded_at"),
+        # 为最常见的查询建立复合索引 
+        Index("idx_sensor_reading_device_ts", "device_id", "recorded_at"),
+        Index("idx_sensor_reading_pond_ts", "pond_id", "ts_utc"),
+        Index("idx_sensor_reading_metric_ts", "metric", "ts_utc"),
+        Index("idx_sensor_reading_batch_ts", "batch_id", "ts_utc"),
     ) 
      
     id: Mapped[int] = mapped_column(
@@ -38,12 +42,12 @@ class SensorReading(Base):
         comment="主键ID"
     ) 
      
-    # 外键，关联到具体的传感器设备 
-    sensor_id: Mapped[int] = mapped_column(
+    # 设备ID（FK → devices.id）- 直接关联统一设备表
+    device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("sensors.id"),
+        ForeignKey("devices.id"),
         nullable=False,
-        comment="传感器设备ID（FK）"
+        comment="设备ID（FK → devices.id）"
     ) 
     
     # 所属养殖池ID（FK）- 快照字段，记录数据产生时的池位
@@ -61,13 +65,6 @@ class SensorReading(Base):
         comment="批次ID（FK，关联到batches.id主键）",
         init=False
     )
-    
-    # 传感器类型名称（快照字段，从 sensor_types 同步，便于查询）
-    type_name: Mapped[Optional[str]] = mapped_column(
-        String(128),
-        comment="传感器类型名称（快照字段，如'溶解氧饱和度传感器'，从sensor_types同步）",
-        init=False
-    )
      
     # 读数数据
     # 记录的数值，使用浮点数以兼容各种类型的数据 
@@ -81,6 +78,13 @@ class SensorReading(Base):
     unit: Mapped[Optional[str]] = mapped_column(
         String(50),
         comment="单位（%/mm/°C/NTU/mg/L等）",
+        init=False
+    )
+    
+    # metric标识符（快照字段，从sensor_types同步，便于查询）
+    metric: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        comment="metric标识符（快照字段，从sensor_types同步，便于查询）",
         init=False
     )
     
@@ -114,12 +118,12 @@ class SensorReading(Base):
     )
     
     # 质量控制
-    # 质量标记（ok/missing/anomaly）- 使用Enum类型
+    # 质量标记（ok/missing/anomaly）
     quality_flag: Mapped[str] = mapped_column(
-        Enum('ok', 'missing', 'anomaly', name='quality_flag_enum'),
+        String(20),
         default='ok',
         nullable=False,
-        comment="质量标记（ok/missing/anomaly）- 使用Enum类型",
+        comment="质量标记（ok/missing/anomaly）",
         init=False
     )
     
@@ -150,6 +154,6 @@ class SensorReading(Base):
     )
  
     # ORM 关系 
-    sensor: Mapped["Sensor"] = relationship(back_populates="readings", init=False)
+    device: Mapped["Device"] = relationship(back_populates="sensor_readings", init=False)
     pond: Mapped["Pond"] = relationship(back_populates="sensor_readings", init=False)
     batch: Mapped[Optional["Batch"]] = relationship(init=False)

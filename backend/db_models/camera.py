@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 摄像头数据库模型
-用于存储和管理摄像头扩展信息、图片和健康检查数据
+用于存储和管理摄像头图片和健康检查数据
+直接关联devices.id，不再使用cameras扩展表
 """
 
 from typing import Optional
@@ -23,177 +24,19 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import TEXT, DATETIME
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Enum
 from .base import Base
-
-
-class Camera(Base):
-    """
-    摄像头扩展表
-    存储摄像头配置和当前状态信息。与devices表1:1关联，与sensors/feeders架构保持一致。
-    device_id是UNIQUE，自动有索引
-    """
-    __tablename__ = "cameras"
-    __table_args__ = (
-        Index("idx_camera_pond", "pond_id"),
-    )
-    
-    # 主键ID
-    id: Mapped[int] = mapped_column(
-        Integer, 
-        primary_key=True, 
-        autoincrement=True, 
-        comment="主键ID",
-        init=False
-    )
-    
-    # 关联设备ID（FK）- 一对一关系
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.id"),
-        unique=True,
-        nullable=False,
-        comment="关联设备ID（FK）"
-    )
-    
-    # ===== 冗余字段（快照字段，从 devices 同步，便于查询） =====
-    # 设备名称（快照字段）
-    name: Mapped[str] = mapped_column(
-        String(128),
-        nullable=False,
-        comment="设备名称（快照字段，从devices同步）"
-    )
-    
-    # 所属养殖池ID（快照字段）
-    pond_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("ponds.id"),
-        comment="所属养殖池ID（快照字段，从devices同步）"
-    )
-    # ===== 冗余字段结束 =====
-    
-    # 当前状态信息（原 camera_status）
-    # 画质(高/中/低)
-    quality: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        comment="画质(高/中/低)",
-        init=False
-    )
-    
-    # 连通性百分比
-    connectivity: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        comment="连通性百分比"
-    )
-    
-    # 温度
-    temperature: Mapped[Optional[Decimal]] = mapped_column(
-        DECIMAL(5, 2),
-        comment="温度",
-        init=False
-    )
-    
-    # 最后更新时间戳(毫秒)
-    last_update: Mapped[Optional[int]] = mapped_column(
-        BIGINT,
-        comment="最后更新时间戳(毫秒)",
-        init=False
-    )
-    
-    # 最后更新时间字符串
-    last_update_time: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        comment="最后更新时间字符串",
-        init=False
-    )
-    
-    # 摄像头特有配置
-    # 分辨率
-    resolution: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        comment="分辨率",
-        init=False
-    )
-    
-    # 帧率
-    fps: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        comment="帧率"
-    )
-    
-    # 编解码
-    codec: Mapped[Optional[str]] = mapped_column(
-        String(32),
-        comment="编解码",
-        init=False
-    )
-    
-    # 流媒体地址
-    stream_url: Mapped[Optional[str]] = mapped_column(
-        String(512),
-        comment="流媒体地址",
-        init=False
-    )
-    
-    # 是否正在录制
-    recording: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        comment="是否正在录制"
-    )
-    
-    # 是否开启夜视功能
-    night_vision: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        comment="是否开启夜视功能"
-    )
-    
-    # 是否开启运动检测
-    motion_detection: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        comment="是否开启运动检测"
-    )
-    
-    # 创建时间
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        server_default=text("CURRENT_TIMESTAMP"),
-        nullable=False,
-        comment="创建时间",
-        init=False
-    )
-    
-    # 更新时间
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        server_default=text("CURRENT_TIMESTAMP"),
-        onupdate=text("CURRENT_TIMESTAMP"),
-        nullable=False,
-        comment="更新时间",
-        init=False
-    )
-    
-    # ORM 关系
-    device: Mapped["Device"] = relationship(back_populates="camera", init=False)
-    pond: Mapped[Optional["Pond"]] = relationship(init=False)
-    camera_images: Mapped[list["CameraImage"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
-    camera_health: Mapped[list["CameraHealth"]] = relationship(back_populates="camera", cascade="all, delete-orphan", init=False)
 
 
 class CameraImage(Base):
     """
     摄像头图片模型
-    pond_id为快照字段，优化LLM查询和保证历史数据一致性
+    直接关联devices.id。pond_id为快照字段，优化LLM查询和保证历史数据一致性
     """
     __tablename__ = "camera_images"
     __table_args__ = (
-        Index("idx_camera_images_camera", "camera_id"),
-        Index("idx_ci_pond_ts", "pond_id", "ts_utc"),
-        Index("idx_ci_batch_ts", "batch_id", "ts_utc"),
+        Index("idx_camera_image_device_ts", "device_id", "ts_utc"),
+        Index("idx_camera_image_pond_ts", "pond_id", "ts_utc"),
+        Index("idx_camera_image_batch_ts", "batch_id", "ts_utc"),
     )
     
     # 主键ID
@@ -205,20 +48,20 @@ class CameraImage(Base):
         init=False
     )
     
-    # 摄像头ID（FK）
-    camera_id: Mapped[int] = mapped_column(
+    # 设备ID（FK → devices.id）- 直接关联统一设备表
+    device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("cameras.id"),
+        ForeignKey("devices.id"),
         nullable=False,
-        comment="摄像头ID（FK）"
+        comment="设备ID（FK → devices.id）"
     )
     
-    # 所属养殖池ID（FK）- 快照字段，记录拍摄时的池位，用于历史数据一致性和LLM查询优化
+    # 所属养殖池ID（FK）- 快照字段，记录拍摄时的池位
     pond_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("ponds.id"),
         nullable=False,
-        comment="所属养殖池ID（FK）- 快照字段，记录拍摄时的池位，用于历史数据一致性和LLM查询优化"
+        comment="所属养殖池ID（FK）- 快照字段，记录拍摄时的池位"
     )
     
     # 批次ID（FK，关联到batches表的主键id）
@@ -308,7 +151,7 @@ class CameraImage(Base):
     
     # 质量标记（ok/missing/anomaly）
     quality_flag: Mapped[str] = mapped_column(
-        Enum('ok', 'missing', 'anomaly', name='quality_flag_enum'),
+        String(20),
         default='ok',
         nullable=False,
         comment="质量标记（ok/missing/anomaly）",
@@ -342,7 +185,7 @@ class CameraImage(Base):
     )
     
     # ORM 关系
-    camera: Mapped["Camera"] = relationship(back_populates="camera_images", init=False)
+    device: Mapped["Device"] = relationship(back_populates="camera_images", init=False)
     pond: Mapped["Pond"] = relationship(back_populates="camera_images", init=False)
     batch: Mapped[Optional["Batch"]] = relationship(init=False)
 
@@ -350,12 +193,12 @@ class CameraImage(Base):
 class CameraHealth(Base):
     """
     摄像头健康检查模型
-    pond_id为快照字段，优化LLM查询和保证历史数据一致性。通常按池子或状态查询
+    直接关联devices.id。pond_id为快照字段，优化LLM查询和保证历史数据一致性
     """
     __tablename__ = "camera_health"
     __table_args__ = (
-        Index("idx_ch_camera_ts", "camera_id", "timestamp"),
-        Index("idx_ch_pond_ts", "pond_id", "timestamp"),
+        Index("idx_camera_health_device_ts", "device_id", "timestamp"),
+        Index("idx_camera_health_pond_ts", "pond_id", "timestamp"),
         Index("idx_camera_health_status", "health_status"),
         Index("idx_ch_overall_score", "overall_score"),
     )
@@ -369,20 +212,20 @@ class CameraHealth(Base):
         init=False
     )
     
-    # 摄像头ID（FK）
-    camera_id: Mapped[int] = mapped_column(
+    # 设备ID（FK → devices.id）- 直接关联统一设备表
+    device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("cameras.id"),
+        ForeignKey("devices.id"),
         nullable=False,
-        comment="摄像头ID（FK）"
+        comment="设备ID（FK → devices.id）"
     )
     
-    # 所属养殖池ID（FK）- 快照字段，记录检查时的池位，用于历史数据一致性和LLM查询优化
+    # 所属养殖池ID（FK）- 快照字段，记录检查时的池位
     pond_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("ponds.id"),
         nullable=False,
-        comment="所属养殖池ID（FK）- 快照字段，记录检查时的池位，用于历史数据一致性和LLM查询优化"
+        comment="所属养殖池ID（FK）- 快照字段，记录检查时的池位"
     )
     
     # 健康状态
@@ -531,5 +374,5 @@ class CameraHealth(Base):
     )
     
     # ORM 关系
-    camera: Mapped["Camera"] = relationship(back_populates="camera_health", init=False)
+    device: Mapped["Device"] = relationship(back_populates="camera_health", init=False)
     pond: Mapped["Pond"] = relationship(back_populates="camera_health", init=False)

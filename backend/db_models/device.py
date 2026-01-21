@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     text,
     JSON,
+    Boolean,
 )
 from sqlalchemy.dialects.mysql import TEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,13 +21,15 @@ from .base import Base
 class Device(Base):
     """
     统一设备管理表
-    管理所有类型的设备。通过device_type_id关联device_types表获取类型信息
+    管理所有类型的设备。通过device_type_id关联device_types表获取类型信息。
+    sensor_type_id仅当设备为传感器时填写，设备专属配置统一存储在device_specific_config JSON字段中
     """
     __tablename__ = "devices"
     __table_args__ = (
         Index("idx_device_status", "status"),
         Index("idx_device_ownership", "ownership"),
         Index("idx_device_type_status", "device_type_id", "status"),
+        Index("idx_device_sensor_type", "sensor_type_id"),
         Index("idx_device_pond_status", "pond_id", "status"),
     )
 
@@ -38,20 +41,14 @@ class Device(Base):
         String(128), 
         unique=True, 
         nullable=False,
-        comment="设备唯一标识符 (UUID/SN)"
+        comment="设备唯一标识符（如：feeder_124314, sensor_1343）"
     )
 
     # 设备名称
     name: Mapped[str] = mapped_column(
         String(128), 
         nullable=False,
-        comment="设备名称"
-    )
-
-    # 设备描述
-    description: Mapped[Optional[str]] = mapped_column(
-        TEXT,
-        comment="设备描述信息"
+        comment="设备名称（必填）"
     )
 
     # 设备归属（用户、部门、项目等）
@@ -67,6 +64,26 @@ class Device(Base):
         ForeignKey("device_types.id"),
         nullable=False,
         comment="设备类型ID（FK → device_types.id）"
+    )
+
+    # 传感器类型ID（FK → sensor_types.id，仅当category=sensor时填写）
+    sensor_type_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("sensor_types.id"),
+        comment="传感器类型ID（FK → sensor_types.id，仅当category=sensor时填写）"
+    )
+
+    # 关联养殖池ID（如果适用）
+    pond_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("ponds.id"),
+        comment="所属养殖池ID（FK）"
+    )
+
+    # 设备安装位置描述
+    location: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        comment="设备安装位置"
     )
 
     # 设备型号/规格
@@ -88,72 +105,58 @@ class Device(Base):
         comment="设备序列号"
     )
 
-    # 设备安装位置描述
-    location: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        comment="设备安装位置"
-    )
-
-    # 关联养殖池ID（如果适用）
-    pond_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("ponds.id"),
-        comment="所属养殖池ID（FK）"
-    )
-
-    # 固件版本
-    firmware_version: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="固件版本"
-    )
-
-    # 硬件版本
-    hardware_version: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="硬件版本"
-    )
-
-    # 设备IP地址
-    ip_address: Mapped[Optional[str]] = mapped_column(
-        String(45),  # 支持IPv6
-        comment="设备IP地址"
-    )
-
-    # MAC地址
-    mac_address: Mapped[Optional[str]] = mapped_column(
-        String(17),
-        comment="MAC地址"
-    )
-
-    # 设备配置参数（JSON格式）
-    config_json: Mapped[Optional[dict]] = mapped_column(
+    # 设备连接信息（JSON格式，包含连接地址、账户名、密码等）
+    connection_info: Mapped[Optional[dict]] = mapped_column(
         JSON,
-        comment="设备配置参数（包括认证信息、API配置等）"
+        default=None,
+        comment="设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置"
+    )
+
+    # 设备状态（online=在线/offline=离线，默认：online）
+    status: Mapped[str] = mapped_column(
+        String(50), 
+        default="online", 
+        nullable=False,
+        comment="设备状态（online=在线/offline=离线，默认：online）"
+    )
+
+    # 控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同，默认：hybrid）
+    control_mode: Mapped[str] = mapped_column(
+        String(20),
+        default="hybrid",
+        nullable=False,
+        comment="控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同，默认：hybrid）"
+    )
+
+    # 设备专属配置参数（JSON格式）
+    device_specific_config: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        default=None,
+        comment="设备专属配置（JSON格式），不同设备类型存储不同字段，详见设计说明文档"
     )
 
     # 设备标签（便于分类和搜索）
     tags: Mapped[Optional[str]] = mapped_column(
         String(255),
+        default=None,
         comment="设备标签（逗号分隔字符串）"
     )
 
-    # 设备状态（online=在线/offline=离线）
-    status: Mapped[str] = mapped_column(
-        String(50), 
-        default="offline", 
-        nullable=False,
-        comment="设备状态（online=在线/offline=离线）"
+    # 设备描述
+    description: Mapped[Optional[str]] = mapped_column(
+        TEXT,
+        default=None,
+        comment="设备描述信息"
     )
 
-    # 控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）
-    control_mode: Mapped[str] = mapped_column(
-        String(20),
-        default="hybrid",
+    #软删除
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
         nullable=False,
-        comment="控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）"
+        comment="是否软删除"
     )
 
-    # 记录创建和更新时间
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
@@ -172,12 +175,17 @@ class Device(Base):
         comment="更新时间",
         init=False
     )
+
     # ORM 关系定义
     device_type: Mapped[Optional["DeviceType"]] = relationship(back_populates="devices", init=False)
+    sensor_type: Mapped[Optional["SensorType"]] = relationship(back_populates="devices", init=False)
     pond: Mapped[Optional["Pond"]] = relationship(back_populates="devices", init=False)
-    sensor: Mapped[Optional["Sensor"]] = relationship(back_populates="device", uselist=False, init=False)
-    feeder: Mapped[Optional["Feeder"]] = relationship(back_populates="device", uselist=False, init=False)
-    camera: Mapped[Optional["Camera"]] = relationship(back_populates="device", uselist=False, init=False)
+    
+    # 日志表关系
+    sensor_readings: Mapped[List["SensorReading"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
+    feeder_logs: Mapped[List["FeederLog"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
+    camera_images: Mapped[List["CameraImage"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
+    camera_health: Mapped[List["CameraHealth"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
 
 
 class DeviceType(Base):
@@ -193,11 +201,11 @@ class DeviceType(Base):
     # 主键ID
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, init=False)
 
-    # 设备大类（sensor=传感器/feeder=喂食机/camera=摄像头）
+    # 设备大类
     category: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        comment="设备大类（sensor=传感器/feeder=喂食机/camera=摄像头）"
+        comment="设备大类（sensor=传感器/feeder=喂食机/camera=摄像头/water_pump=循环水泵/air_blower=鼓风机/water_switch=水龙头开关/solar_heater_pump=太阳能加热器循环泵）"
     )
 
     # 设备类型名称（中文）

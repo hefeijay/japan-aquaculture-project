@@ -3,16 +3,17 @@
 """
 摄像头服务类
 用于从数据库获取摄像头状态、图片和健康检查数据
+适配统一设备表架构（直接从devices表获取摄像头信息）
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import logging
 import time
 
 from db_models.db_session import db_session_factory
-from db_models.camera import Camera
-from db_models.device import Device
+from db_models.camera import CameraImage, CameraHealth
+from db_models.device import Device, DeviceType
 
 logger = logging.getLogger(__name__)
 
@@ -21,99 +22,113 @@ class CameraService:
     """摄像头数据服务类"""
     
     @classmethod
-    def get_camera_status(cls, camera_id: int) -> Optional[Dict[str, Any]]:
+    def _translate_status(cls, status: str) -> str:
+        """
+        翻译设备状态为中文
+        只有在线和离线两种状态
+        
+        Args:
+            status: 英文状态
+            
+        Returns:
+            中文状态
+        """
+        status_map = {
+            "online": "在线",
+            "offline": "离线"
+        }
+        return status_map.get(status, "离线")  # 默认返回离线
+    
+    @classmethod
+    def get_camera_status(cls, device_id: int) -> Optional[Dict[str, Any]]:
         """
         从数据库获取摄像头状态数据
         
         Args:
-            camera_id: 摄像头ID (cameras.id)
+            device_id: 设备主键ID (devices.id)
             
         Returns:
             摄像头状态数据字典，如果不存在返回None
         """
         try:
             with db_session_factory() as session:
-                # 查询摄像头及其关联的设备信息
-                camera_query = session.query(Camera, Device)\
-                    .join(Device, Camera.device_id == Device.id)\
-                    .filter(Camera.id == camera_id)\
+                # 直接从devices表查询摄像头设备（过滤已删除的设备）
+                device = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(Device.id == device_id)\
+                    .filter(Device.is_deleted == False)\
+                    .filter(DeviceType.category == 'camera')\
                     .first()
                 
-                if not camera_query:
-                    logger.warning(f"摄像头{camera_id}状态数据不存在")
+                if not device:
+                    logger.warning(f"摄像头设备{device_id}不存在或已删除")
                     return None
                 
-                camera, device = camera_query
+                # 从 device_specific_config 获取摄像头配置
+                config = device.device_specific_config or {}
                 
                 # 转换为字典格式（保持原有字段名）
                 status_data = {
-                    "id": camera.id,
-                    "name": camera.name,
+                    "id": device.id,
+                    "name": device.name,
                     "location": device.location or "",
-                    "status": device.status,  # online/offline/maintenance
-                    "quality": camera.quality or "未知",
-                    "resolution": camera.resolution or "N/A",
-                    "fps": camera.fps,
-                    "lastUpdate": camera.last_update if camera.last_update else int(time.time() * 1000),
-                    "lastUpdateTime": camera.last_update_time if camera.last_update_time else datetime.now().strftime("%H:%M:%S"),
-                    "temperature": float(camera.temperature) if camera.temperature else None,
-                    "connectivity": camera.connectivity,
-                    "recording": camera.recording,
-                    "nightVision": camera.night_vision,
-                    "motionDetection": camera.motion_detection
+                    "status": cls._translate_status(device.status),  # 翻译为中文
+                    "quality": config.get("quality", "未知"),
+                    "resolution": config.get("resolution", "N/A"),
+                    "lastUpdate": int(device.updated_at.timestamp() * 1000) if device.updated_at else int(time.time() * 1000),
+                    "lastUpdateTime": device.updated_at.strftime("%H:%M:%S") if device.updated_at else datetime.now().strftime("%H:%M:%S"),
                 }
                 
-                logger.info(f"成功获取摄像头{camera_id}状态数据")
+                logger.info(f"成功获取摄像头设备{device_id}状态数据")
                 return status_data
                 
         except Exception as e:
-            logger.error(f"获取摄像头{camera_id}状态数据失败: {str(e)}", exc_info=True)
+            logger.error(f"获取摄像头设备{device_id}状态数据失败: {str(e)}", exc_info=True)
             return None
     
     @classmethod
-    def get_camera_image(cls, camera_id: int) -> Optional[Dict[str, Any]]:
+    def get_camera_image(cls, device_id: int) -> Optional[Dict[str, Any]]:
         """
         从数据库获取摄像头图片数据
         
         Args:
-            camera_id: 摄像头ID
+            device_id: 设备主键ID (devices.id)
             
         Returns:
             摄像头图片数据字典，如果不存在返回None
         """
         try:
             with db_session_factory() as session:
-                from db_models.camera import CameraImage
                 from sqlalchemy import desc
                 
-                # 查询摄像头及其最新图片
-                camera_query = session.query(Camera, Device)\
-                    .join(Device, Camera.device_id == Device.id)\
-                    .filter(Camera.id == camera_id)\
+                # 直接从devices表查询摄像头设备（过滤已删除的设备）
+                device = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(Device.id == device_id)\
+                    .filter(Device.is_deleted == False)\
+                    .filter(DeviceType.category == 'camera')\
                     .first()
                 
-                if not camera_query:
-                    logger.warning(f"摄像头{camera_id}不存在")
+                if not device:
+                    logger.warning(f"摄像头设备{device_id}不存在或已删除")
                     return None
                 
-                camera, device = camera_query
-                
-                # 获取最新的图片记录
+                # 获取最新的图片记录（直接通过device_id查询）
                 latest_image = session.query(CameraImage)\
-                    .filter(CameraImage.camera_id == camera_id)\
+                    .filter(CameraImage.device_id == device_id)\
                     .order_by(desc(CameraImage.ts_utc))\
                     .first()
                 
                 if not latest_image:
-                    logger.warning(f"摄像头{camera_id}图片数据不存在")
+                    logger.warning(f"摄像头设备{device_id}图片数据不存在")
                     return None
                 
                 # 转换为字典格式（保持原有字段名）
                 image_data = {
-                    "id": camera.id,
-                    "name": camera.name,
+                    "id": device.id,
+                    "name": device.name,
                     "location": device.location or "",
-                    "status": device.status,
+                    "status": cls._translate_status(device.status),  # 翻译为中文
                     "imageUrl": latest_image.image_url,
                     "lastUpdate": int(latest_image.ts_utc.timestamp() * 1000) if latest_image.ts_utc else int(time.time() * 1000),
                     "timestamp": int(latest_image.ts_utc.timestamp() * 1000) if latest_image.ts_utc else int(time.time() * 1000),
@@ -124,55 +139,54 @@ class CameraService:
                     "size": latest_image.size
                 }
                 
-                logger.info(f"成功获取摄像头{camera_id}图片数据")
+                logger.info(f"成功获取摄像头设备{device_id}图片数据")
                 return image_data
                 
         except Exception as e:
-            logger.error(f"获取摄像头{camera_id}图片数据失败: {str(e)}", exc_info=True)
+            logger.error(f"获取摄像头设备{device_id}图片数据失败: {str(e)}", exc_info=True)
             return None
     
     @classmethod
-    def get_camera_health(cls, camera_id: int) -> Optional[Dict[str, Any]]:
+    def get_camera_health(cls, device_id: int) -> Optional[Dict[str, Any]]:
         """
         从数据库获取摄像头健康检查数据
         
         Args:
-            camera_id: 摄像头ID
+            device_id: 设备主键ID (devices.id)
             
         Returns:
             摄像头健康检查数据字典，如果不存在返回None
         """
         try:
             with db_session_factory() as session:
-                from db_models.camera import CameraHealth
                 from sqlalchemy import desc
                 
-                # 查询摄像头及其最新健康检查记录
-                camera_query = session.query(Camera, Device)\
-                    .join(Device, Camera.device_id == Device.id)\
-                    .filter(Camera.id == camera_id)\
+                # 直接从devices表查询摄像头设备（过滤已删除的设备）
+                device = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(Device.id == device_id)\
+                    .filter(Device.is_deleted == False)\
+                    .filter(DeviceType.category == 'camera')\
                     .first()
                 
-                if not camera_query:
-                    logger.warning(f"摄像头{camera_id}不存在")
+                if not device:
+                    logger.warning(f"摄像头设备{device_id}不存在或已删除")
                     return None
                 
-                camera, device = camera_query
-                
-                # 获取最新的健康检查记录
+                # 获取最新的健康检查记录（直接通过device_id查询）
                 latest_health = session.query(CameraHealth)\
-                    .filter(CameraHealth.camera_id == camera_id)\
+                    .filter(CameraHealth.device_id == device_id)\
                     .order_by(desc(CameraHealth.timestamp))\
                     .first()
                 
                 if not latest_health:
-                    logger.warning(f"摄像头{camera_id}健康检查数据不存在")
+                    logger.warning(f"摄像头设备{device_id}健康检查数据不存在")
                     return None
                 
                 # 转换为字典格式（保持原有字段名）
                 health_data = {
-                    "id": camera.id,
-                    "name": camera.name,
+                    "id": device.id,
+                    "name": device.name,
                     "location": device.location or "",
                     "health_status": latest_health.health_status,
                     "overall_score": float(latest_health.overall_score),
@@ -202,9 +216,42 @@ class CameraService:
                     "last_check": latest_health.last_check
                 }
                 
-                logger.info(f"成功获取摄像头{camera_id}健康检查数据")
+                logger.info(f"成功获取摄像头设备{device_id}健康检查数据")
                 return health_data
                 
         except Exception as e:
-            logger.error(f"获取摄像头{camera_id}健康检查数据失败: {str(e)}", exc_info=True)
+            logger.error(f"获取摄像头设备{device_id}健康检查数据失败: {str(e)}", exc_info=True)
             return None
+    
+    @classmethod
+    def get_camera_list(cls) -> List[Dict[str, Any]]:
+        """
+        获取所有摄像头设备列表
+        
+        Returns:
+            摄像头列表，包含 id、name、location
+        """
+        try:
+            with db_session_factory() as session:
+                # 查询所有未删除的摄像头设备
+                devices = session.query(Device)\
+                    .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                    .filter(Device.is_deleted == False)\
+                    .filter(DeviceType.category == 'camera')\
+                    .order_by(Device.id)\
+                    .all()
+                
+                camera_list = []
+                for device in devices:
+                    camera_list.append({
+                        "id": device.id,
+                        "name": device.name,
+                        "location": device.location or ""
+                    })
+                
+                logger.info(f"成功获取{len(camera_list)}个摄像头设备列表")
+                return camera_list
+                
+        except Exception as e:
+            logger.error(f"获取摄像头列表失败: {str(e)}", exc_info=True)
+            return []
