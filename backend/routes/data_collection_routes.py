@@ -338,7 +338,7 @@ def receive_sensor_data():
                     "quality_flag": reading.quality_flag
                 },
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
             
     except ValueError as e:
         logger.error(f"传感器数据接收失败（数据格式错误）: {str(e)}")
@@ -534,7 +534,7 @@ def receive_feeder_data():
                     "status": feeder_log.status
                 },
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
             
     except ValueError as e:
         logger.error(f"喂食机数据接收失败（数据格式错误）: {str(e)}")
@@ -706,7 +706,7 @@ def receive_operation_data():
                 "success": True,
                 "data": result_data,
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
             
     except ValueError as e:
         logger.error(f"操作日志接收失败（数据格式错误）: {str(e)}")
@@ -911,7 +911,7 @@ def receive_camera_data():
                     "timestamp": timestamp_ms
                 },
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
             
     except Exception as e:
         logger.error(f"摄像头图像接收失败: {str(e)}")
@@ -1055,7 +1055,7 @@ def receive_shrimp_stats_data():
                 "success": True,
                 "message": "虾类检测统计结果已保存",
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
             
     except Exception as e:
         logger.error(f"虾类检测统计结果接收失败: {str(e)}")

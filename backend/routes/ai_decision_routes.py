@@ -105,7 +105,7 @@ def create_decision():
                 "decision_id": decision_id,
                 "message": "AI决策创建成功",
                 "timestamp": AIDecisionService.format_japanese_time()
-            }), 201
+            }), 200
         else:
             return jsonify({
                 "success": False,
@@ -282,7 +282,7 @@ def create_rule():
                 "rule_id": rule_id,
                 "message": "决策规则创建成功",
                 "timestamp": AIDecisionService.format_japanese_time()
-            }), 201
+            }), 200
         else:
             return jsonify({
                 "success": False,

@@ -64,7 +64,7 @@ def create_message():
                 "message": message,
                 "message_id": message_id,
                 "timestamp": int(time.time() * 1000)
-            }), 201
+            }), 200
         else:
             logger.warning(f"消息存储失败: {message}")
             return jsonify({

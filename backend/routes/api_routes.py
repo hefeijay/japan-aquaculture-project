@@ -1450,7 +1450,7 @@ def create_device():
                     "device_id": device.device_id,
                     "name": device.name
                 }
-            }), 201
+            }), 200
             
     except ValueError as e:
         logger.error(f"创建设备失败（数据格式错误）: {str(e)}")
