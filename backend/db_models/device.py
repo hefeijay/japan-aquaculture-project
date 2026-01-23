@@ -52,10 +52,10 @@ class Device(Base):
     )
 
     # 设备归属（用户、部门、项目等）
-    ownership: Mapped[str] = mapped_column(
+    ownership: Mapped[Optional[str]] = mapped_column(
         String(128), 
-        nullable=False,
-        comment="设备归属"
+        nullable=True,
+        comment="设备归属（可选）"
     )
 
     # 设备类型ID（外键，关联设备类型表）
@@ -73,17 +73,19 @@ class Device(Base):
         comment="传感器类型ID（FK → sensor_types.id，仅当category=sensor时填写）"
     )
 
-    # 关联养殖池ID（如果适用）
-    pond_id: Mapped[Optional[int]] = mapped_column(
+    # 关联养殖池ID（必填）
+    pond_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("ponds.id"),
-        comment="所属养殖池ID（FK）"
+        nullable=False,
+        comment="所属养殖池ID（FK，必填）"
     )
 
     # 设备安装位置描述
-    location: Mapped[Optional[str]] = mapped_column(
+    location: Mapped[str] = mapped_column(
         String(255),
-        comment="设备安装位置"
+        nullable=False,
+        comment="设备安装位置（必填）"
     )
 
     # 设备型号/规格

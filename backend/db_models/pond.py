@@ -40,7 +40,7 @@ class Pond(Base):
     )
     
     # 养殖池的唯一标识或名称，方便人类阅读 
-    name: Mapped[str] = mapped_column(String(128), unique=True, comment="养殖池名称") 
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, comment="养殖池名称（必填）") 
     
     # 养殖池的地理位置或其他描述信息 
     location: Mapped[Optional[str]] = mapped_column(String(255), comment="位置信息") 
