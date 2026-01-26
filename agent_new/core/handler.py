@@ -3,6 +3,7 @@
 """
 核心处理逻辑 - 统一处理 REST 和 WebSocket 请求
 """
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional, Callable, Awaitable
 
@@ -14,6 +15,8 @@ from core.query_rewriter import rewrite_query
 from services.expert_consultation_service import expert_service
 from services.device_expert_service import device_expert_service
 from services.chat_history_service import save_message, get_history, format_history_for_llm
+from services.web_search_service import web_search_service
+from services.weather_service import weather_service
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +63,24 @@ class ChatHandler:
         # 2. 保存用户消息
         save_message(session_id=session_id, role="user", message=query)
         
-        # 3. 意图识别
+        # 3. 🔥 启动联网搜索任务（并行，不阻塞主流程）
+        search_task = asyncio.create_task(web_search_service.search(query))
+        logger.info(f"🔍 联网搜索任务已启动")
+        
+        # 4. 意图识别
         intent, intent_stats = await recognize_intent(query, history)
         logger.info(f"🎯 意图: {intent}")
         
-        # 4. 根据意图处理
+        # 5. 🌤️ 天气查询（判断是否需要查天气，需要则查询）
+        weather_info = await weather_service.check_and_query_weather(query)
+        if weather_info:
+            context["weather_info"] = weather_info
+            context["weather_queried"] = True
+            logger.info(f"🌤️ 已将天气信息添加到上下文: {weather_info.get('description', '')}")
+        else:
+            logger.info(f"🌤️ 无需查询天气或查询失败")
+        
+        # 6. 根据意图处理（传入 search_task，在 thinking 阶段合并）
         response_content = ""
         metadata = {"intent": intent}
         
@@ -78,6 +94,7 @@ class ChatHandler:
                     context=context,
                     history=history,
                     stream_callback=stream_callback,
+                    search_task=search_task,
                 )
             elif needs_expert(intent):
                 # 数据查询/分析分支 - 需要专家
@@ -89,6 +106,7 @@ class ChatHandler:
                     history=history,
                     intent=intent,
                     stream_callback=stream_callback,
+                    search_task=search_task,
                 )
             else:
                 # 闲聊分支
@@ -98,6 +116,7 @@ class ChatHandler:
                     context=context,
                     history=history,
                     stream_callback=stream_callback,
+                    search_task=search_task,
                 )
             
             metadata["intent"] = intent
@@ -133,6 +152,7 @@ class ChatHandler:
         context: Dict[str, Any],
         history: List[Dict[str, str]],
         stream_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        search_task: Optional[asyncio.Task] = None,
     ) -> tuple[str, Dict[str, Any]]:
         """处理设备控制请求"""
         
@@ -157,6 +177,15 @@ class ChatHandler:
                 else:
                     device_answer = "设备操作完成"
                 
+                # 🔥 等待联网搜索结果
+                search_result = {}
+                if search_task:
+                    try:
+                        search_result = await search_task
+                        logger.info(f"🔍 联网搜索完成，结果数: {len(search_result.get('results', []))}")
+                    except Exception as e:
+                        logger.warning(f"联网搜索失败: {e}")
+                
                 logger.info(f"→ thinking整合")
                 # 通过 thinking agent 整合输出
                 final_response = await self._thinking_integrate(
@@ -166,12 +195,14 @@ class ChatHandler:
                     context=context,
                     history=history,
                     stream_callback=stream_callback,
+                    search_result=search_result,
                 )
                 
                 return final_response, {
                     "device_expert_used": True,
                     "device_type": device_response.get("device_type"),
                     "success": True,
+                    "web_search_used": search_result.get("success", False),
                 }
             else:
                 error = device_response.get("error", "未知错误")
@@ -194,6 +225,7 @@ class ChatHandler:
         history: List[Dict[str, str]],
         intent: str,
         stream_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        search_task: Optional[asyncio.Task] = None,
     ) -> tuple[str, Dict[str, Any]]:
         """处理需要专家的数据查询/分析请求"""
         
@@ -212,6 +244,7 @@ class ChatHandler:
                 context=context,
                 history=history,
                 stream_callback=stream_callback,
+                search_task=search_task,
             )
         
         try:
@@ -244,6 +277,15 @@ class ChatHandler:
             if expert_response.get("success"):
                 expert_answer = expert_response.get("answer", "")
                 
+                # 🔥 等待联网搜索结果
+                search_result = {}
+                if search_task:
+                    try:
+                        search_result = await search_task
+                        logger.info(f"🔍 联网搜索完成，结果数: {len(search_result.get('results', []))}")
+                    except Exception as e:
+                        logger.warning(f"联网搜索失败: {e}")
+                
                 logger.info(f"→ thinking整合")
                 # 通过 thinking agent 整合输出
                 final_response = await self._thinking_integrate(
@@ -253,11 +295,13 @@ class ChatHandler:
                     context=context,
                     history=history,
                     stream_callback=stream_callback,
+                    search_result=search_result,
                 )
                 
                 return final_response, {
                     "expert_consulted": True,
                     "confidence": expert_response.get("confidence", 0.0),
+                    "web_search_used": search_result.get("success", False),
                 }
             else:
                 # 专家咨询失败，使用兜底
@@ -267,6 +311,7 @@ class ChatHandler:
                     context=context,
                     history=history,
                     stream_callback=stream_callback,
+                    search_task=search_task,
                 )
                 
         except Exception as e:
@@ -276,6 +321,7 @@ class ChatHandler:
                 context=context,
                 history=history,
                 stream_callback=stream_callback,
+                search_task=search_task,
             )
     
     async def _handle_casual_chat(
@@ -284,6 +330,7 @@ class ChatHandler:
         context: Dict[str, Any],
         history: List[Dict[str, str]],
         stream_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        search_task: Optional[asyncio.Task] = None,
     ) -> tuple[str, Dict[str, Any]]:
         """处理闲聊请求"""
         
@@ -297,14 +344,37 @@ class ChatHandler:
             history=history,
         )
         
-        # 调用 LLM
-        response = await llm_manager.invoke(
+        # 调用 LLM 获取初步回答
+        raw_answer = await llm_manager.invoke(
             messages=messages,
-            stream=stream_callback is not None,
-            stream_callback=stream_callback,
+            stream=False,  # 先不流式，等 thinking 整合时再流式
         )
         
-        return response, {"chat_agent_used": True}
+        # 🔥 等待联网搜索结果
+        search_result = {}
+        if search_task:
+            try:
+                search_result = await search_task
+                logger.info(f"🔍 联网搜索完成，结果数: {len(search_result.get('results', []))}")
+            except Exception as e:
+                logger.warning(f"联网搜索失败: {e}")
+        
+        # 🔥 通过 thinking agent 整合输出（统一在这里使用搜索结果）
+        logger.info(f"→ thinking整合")
+        final_response = await self._thinking_integrate(
+            user_query=query,
+            raw_answer=raw_answer,
+            source="聊天助手",
+            context=context,
+            history=history,
+            stream_callback=stream_callback,
+            search_result=search_result,
+        )
+        
+        return final_response, {
+            "chat_agent_used": True,
+            "web_search_used": search_result.get("success", False),
+        }
     
     async def _thinking_integrate(
         self,
@@ -314,6 +384,7 @@ class ChatHandler:
         context: Dict[str, Any],
         history: List[Dict[str, str]],
         stream_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        search_result: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         通过 thinking agent 整合输出
@@ -328,6 +399,7 @@ class ChatHandler:
             context: 上下文信息
             history: 对话历史
             stream_callback: 流式回调
+            search_result: 联网搜索结果（可选）
             
         Returns:
             str: 整合后的回答
@@ -339,12 +411,32 @@ class ChatHandler:
         user_prompt = f"""用户问题：{user_query}
 
 {source}回答：
-{raw_answer}
+{raw_answer}"""
+        
+        # 🌤️ 如果有天气信息，追加到提示中
+        if context.get("weather_info"):
+            weather_text = weather_service.format_for_context(context["weather_info"])
+            if weather_text:
+                user_prompt += f"""
+
+{weather_text}"""
+        
+        # 🔥 如果有联网搜索结果，追加到提示中
+        if search_result:
+            search_text = web_search_service.format_for_llm(search_result)
+            if search_text:
+                user_prompt += f"""
+
+{search_text}"""
+        
+        user_prompt += """
 
 请基于以上信息，整合并优化回答，确保：
 1. 回答专业、准确
 2. 格式清晰、易读
-3. 如有必要，补充引导问题"""
+3. 如有天气信息，结合天气给出建议
+4. 如有联网搜索结果，可参考补充最新信息
+5. 如有必要，补充引导问题"""
         
         # 构建消息
         messages = format_messages(

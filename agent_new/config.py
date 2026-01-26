@@ -66,6 +66,18 @@ class Settings(BaseSettings):
     DEVICE_EXPERT_API_TIMEOUT: int = 60
     ENABLE_DEVICE_EXPERT: bool = True
     
+    # ========== 联网搜索配置 (Serper) ==========
+    SERPER_API_KEY: Optional[str] = None
+    ENABLE_WEB_SEARCH: bool = True
+    WEB_SEARCH_TIMEOUT: int = 10  # 秒
+    
+    # ========== 天气服务配置 (OpenWeatherMap) ==========
+    OPENWEATHER_API_KEY: Optional[str] = None
+    OPENWEATHER_BASE_URL: str = "https://api.openweathermap.org/data/2.5/weather"
+    WEATHER_DEFAULT_LOCATION: str = "Tsukuba"  # 默认城市
+    WEATHER_LANG: str = "zh_cn"  # 返回语言（中文）
+    ENABLE_WEATHER_SERVICE: bool = True  # 是否启用天气服务
+    
     @property
     def database_url(self) -> str:
         """构建数据库连接URL"""
