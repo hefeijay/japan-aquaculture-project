@@ -283,3 +283,193 @@ class DeviceService:
         except Exception as e:
             logger.error(f"获取设备失败: {str(e)}")
             return None
+
+
+class DeviceConnectionTester:
+    """
+    设备连接测试服务类
+    支持不同类型设备的连接测试，使用策略模式根据 category 分发到对应的测试方法
+    """
+    
+    # 支持的设备类别 -> 测试方法映射
+    TESTER_MAP = {
+        'feeder': '_test_feeder_connection',
+        # 后续扩展：
+        # 'camera': '_test_camera_connection',
+        # 'sensor': '_test_sensor_connection',
+    }
+    
+    @classmethod
+    def get_supported_categories(cls) -> List[str]:
+        """获取支持连接测试的设备类别列表"""
+        return list(cls.TESTER_MAP.keys())
+    
+    @classmethod
+    def test_connection(cls, category: str, connection_info: Dict[str, Any], timeout: int = 15) -> Dict[str, Any]:
+        """
+        统一的设备连接测试入口
+        
+        Args:
+            category: 设备类别（feeder, camera, sensor等）
+            connection_info: 设备连接信息（不同设备类型字段不同）
+            timeout: 超时时间（秒），默认15秒
+            
+        Returns:
+            测试结果字典：
+            {
+                "success": bool,
+                "message": str,
+                "details": dict  # 设备特定的返回信息
+            }
+        """
+        # 检查是否支持该设备类别
+        if category not in cls.TESTER_MAP:
+            supported = ', '.join(cls.TESTER_MAP.keys())
+            return {
+                "success": False,
+                "message": f"❌ 不支持的设备类别: {category}",
+                "details": {
+                    "error": f"当前支持的设备类别: {supported}",
+                    "category": category
+                }
+            }
+        
+        # 获取对应的测试方法并执行
+        tester_method = getattr(cls, cls.TESTER_MAP[category])
+        try:
+            return tester_method(connection_info, timeout)
+        except Exception as e:
+            logger.error(f"设备连接测试异常 [{category}]: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "message": "❌ 测试过程发生异常",
+                "details": {"error": str(e)}
+            }
+    
+    @classmethod
+    def _test_feeder_connection(cls, connection_info: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+        """
+        喂食机连接测试
+        
+        connection_info 必需字段：
+            - base_url: API地址，如: https://ffish.huaeran.cn:8081/commonRequest
+            - user_id: 用户名
+            - password: 密码
+            
+        Args:
+            connection_info: 连接信息
+            timeout: 超时时间（秒）
+            
+        Returns:
+            测试结果字典
+        """
+        import requests
+        
+        # 验证必需字段
+        required_fields = ['base_url', 'user_id', 'password']
+        missing_fields = [f for f in required_fields if not connection_info.get(f)]
+        if missing_fields:
+            return {
+                "success": False,
+                "message": f"❌ 缺少必需字段: {', '.join(missing_fields)}",
+                "details": {
+                    "error": "connection_info 格式错误",
+                    "required_fields": required_fields,
+                    "missing_fields": missing_fields
+                }
+            }
+        
+        base_url = connection_info['base_url']
+        user_id = connection_info['user_id']
+        password = connection_info['password']
+        
+        try:
+            # 构建登录请求
+            payload = {
+                "msgType": 1000,
+                "userID": user_id,
+                "password": password,
+            }
+            
+            logger.info(f"测试喂食机连接: {base_url}, 用户: {user_id}")
+            
+            # 发送POST请求
+            resp = requests.post(
+                base_url,
+                json=payload,
+                verify=True,
+                timeout=timeout
+            )
+            
+            # 检查HTTP状态
+            resp.raise_for_status()
+            data = resp.json()
+            
+            # 检查登录状态
+            status = data.get("status")
+            if status == 1:
+                authkey = data.get("data", [{}])[0].get("authkey", "")
+                logger.info(f"喂食机连接测试成功: {base_url}")
+                return {
+                    "success": True,
+                    "message": "✅ 连接测试成功，设备可以正常连接",
+                    "details": {
+                        "authkey": authkey[:10] + "..." if authkey and len(authkey) > 10 else authkey,
+                        "response_status": status
+                    }
+                }
+            else:
+                error_msg = data.get("msg") or data.get("message") or "未知错误"
+                logger.warning(f"喂食机连接测试失败: {base_url}, status={status}, error={error_msg}")
+                return {
+                    "success": False,
+                    "message": f"❌ 连接测试失败: status={status}",
+                    "details": {
+                        "error": error_msg,
+                        "response_status": status
+                    }
+                }
+                
+        except requests.exceptions.Timeout:
+            logger.warning(f"喂食机连接超时: {base_url}, timeout={timeout}s")
+            return {
+                "success": False,
+                "message": "❌ 连接超时",
+                "details": {
+                    "error": f"请求在 {timeout} 秒内未响应",
+                    "timeout": timeout
+                }
+            }
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"喂食机连接错误: {base_url}, error={str(e)}")
+            return {
+                "success": False,
+                "message": "❌ 无法连接到服务器",
+                "details": {
+                    "error": f"连接错误: {str(e)}"
+                }
+            }
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"喂食机请求失败: {base_url}, error={str(e)}")
+            return {
+                "success": False,
+                "message": "❌ 请求失败",
+                "details": {
+                    "error": str(e)
+                }
+            }
+    
+    # ==================== 后续扩展示例 ====================
+    # @classmethod
+    # def _test_camera_connection(cls, connection_info: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+    #     """
+    #     摄像头连接测试
+    #     
+    #     connection_info 必需字段：
+    #         - rtsp_url: RTSP流地址，或
+    #         - http_url: HTTP截图地址
+    #         - username: 用户名（可选）
+    #         - password: 密码（可选）
+    #     """
+    #     # TODO: 实现摄像头连接测试逻辑
+    #     pass

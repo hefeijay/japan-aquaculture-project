@@ -1718,3 +1718,119 @@ def delete_device(device_id):
             "message": f"服务器内部错误: {str(e)}",
             "data": None
         }), 500
+
+
+@api_bp.route('/device/test-connection', methods=['POST'])
+def test_device_connection():
+    """
+    设备连接测试（统一接口）
+    根据设备类别（category）调用对应的连接测试逻辑
+    
+    Request Body:
+        {
+            "category": "feeder",  // 设备类别：feeder, camera, sensor...
+            "connection_info": {
+                // 根据 category 不同，字段不同
+                // feeder 需要：
+                "base_url": "https://ffish.huaeran.cn:8081/commonRequest",
+                "user_id": "admin",
+                "password": "123456"
+            },
+            "timeout": 15  // 可选，默认15秒
+        }
+    
+    Returns:
+        JSON格式的测试结果
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                "code": 400,
+                "message": "请求必须是JSON格式",
+                "data": None
+            }), 400
+        
+        data = request.get_json()
+        
+        # 验证必需字段
+        category = data.get('category')
+        connection_info = data.get('connection_info')
+        timeout = data.get('timeout', 15)
+        
+        if not category:
+            return jsonify({
+                "code": 400,
+                "message": "缺少必需字段: category",
+                "data": None
+            }), 400
+        
+        if not connection_info:
+            return jsonify({
+                "code": 400,
+                "message": "缺少必需字段: connection_info",
+                "data": None
+            }), 400
+        
+        if not isinstance(connection_info, dict):
+            return jsonify({
+                "code": 400,
+                "message": "connection_info 必须是JSON对象",
+                "data": None
+            }), 400
+        
+        # 验证 timeout
+        try:
+            timeout = int(timeout)
+            if timeout < 1 or timeout > 120:
+                timeout = 15  # 超出范围使用默认值
+        except (ValueError, TypeError):
+            timeout = 15
+        
+        # 调用连接测试服务
+        from services.device_service import DeviceConnectionTester
+        result = DeviceConnectionTester.test_connection(category, connection_info, timeout)
+        
+        logger.info(f"设备连接测试 [{category}]: success={result.get('success')}")
+        
+        return jsonify({
+            "code": 200 if result.get('success') else 400,
+            "message": "success" if result.get('success') else "failed",
+            "data": result
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"设备连接测试接口异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
+
+
+@api_bp.route('/device/test-connection/supported', methods=['GET'])
+def get_supported_connection_test_categories():
+    """
+    获取支持连接测试的设备类别列表
+    
+    Returns:
+        JSON格式的支持的设备类别列表
+    """
+    try:
+        from services.device_service import DeviceConnectionTester
+        categories = DeviceConnectionTester.get_supported_categories()
+        
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": {
+                "supported_categories": categories
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取支持的设备类别失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
