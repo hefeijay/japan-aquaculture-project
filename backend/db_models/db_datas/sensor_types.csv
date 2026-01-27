@@ -1,0 +1,9 @@
+id,type_name,metric,unit,valid_min,valid_max,description
+1,dissolved_oxygen_aturation,do,mg/L,3.0,15.0,溶解氧饱和度
+2,liquid_level,water_level,mm,500.0,5000.0,液位
+3,PH,PH,pH,6.0,9.0,PH
+4,temperature,temperature,°C,15.0,35.0,温度
+5,turbidity,turbidity,NTU,0.0,100.0,浊度
+6,ammonia,ammonia,mg/L,0.0,2.0,氨氮浓度
+7,nitrite,nitrite,mg/L,0.0,0.5,亚硝酸盐浓度
+10,circulation,circulation,unknown,0.0,100.0,Auto-created sensor type for circulation

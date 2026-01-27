@@ -1,0 +1,2923 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "日本陆上养殖项目 API",
+    "description": "日本陆上养殖项目完整接口文档\n\n包含设备管理、养殖池管理、传感器监控、数据采集等功能。\n\n## 统一设备表架构说明\n\n所有设备信息存储在统一的 `devices` 表中，通过 `device_type_id` 关联 `device_types` 表获取设备类别。\n\n- **传感器设备**：通过 `sensor_type_id` 关联 `sensor_types` 表获取传感器类型信息，返回在 `info` 字段\n- **其他设备**：特有配置存储在 `device_specific_config` 字段，直接返回\n\n## 设备类型特殊字段映射\n\n不同设备类型（category）在 `device_specific_config` 字段中需要填写的特殊字段如下：\n\n### 喂食机 (feeder)\n- `feed_count`: 默认喂食份数（来自云端API的feedCount，默认：1）\n- `timezone`: 时区（UTC+，对应云端API的devTimeZone，默认：9）\n- `network_type`: 网络类型（0=WiFi, 1=4G，对应云端API的netType，默认：0）\n- `group_id`: 设备分组ID（对应云端API的groupID）\n- `feed_portion_weight`: 每份饲料重量（克），用于计算总投喂量，默认：17.0\n- `capacity_kg`: 饲料容量（千克）\n- `feed_type`: 饲料类型\n\n### 传感器 (sensor)\n无需在 `device_specific_config` 中填写特殊字段，传感器类型信息通过 `sensor_type_id` 关联 `sensor_types` 表获取。\n\n### 摄像头 (camera)\n- `quality`: 画质(高/中/低)\n- `resolution`: 分辨率（如：1920x1080）\n- `notes`: 备注\n\n### 循环水泵 (water_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 鼓风机 (air_blower)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 水龙头开关 (water_switch)\n- `notes`: 备注\n\n### 太阳能加热器循环泵 (solar_heater_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n## 固定枚举值说明\n\n### 设备状态 (status)\n- `online`: 在线\n- `offline`: 离线\n\n### 控制模式 (control_mode)\n- `manual_only`: 仅人工\n- `ai_only`: 仅AI\n- `hybrid`: 人工/AI混合\n\n### 设备类别 (category)\n- `sensor`: 传感器\n- `feeder`: 喂食机\n- `camera`: 摄像头\n- `water_pump`: 循环水泵\n- `air_blower`: 鼓风机\n- `water_switch`: 水龙头开关\n- `solar_heater_pump`: 太阳能加热器循环泵\n\n### 喂食机状态 (feeder status)\n- `ok`: 正常\n- `warning`: 警告\n- `error`: 错误",
+    "version": "2.0.0",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5002/api",
+      "description": "本地开发环境"
+    },
+    {
+      "url": "https://api.aquaculture.example.com/api",
+      "description": "生产环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "养殖池管理",
+      "description": "养殖池相关操作"
+    },
+    {
+      "name": "设备管理",
+      "description": "设备相关的所有操作（统一设备表架构）"
+    },
+    {
+      "name": "传感器和监控",
+      "description": "传感器数据和设备监控相关接口"
+    },
+    {
+      "name": "摄像头",
+      "description": "摄像头状态、图片和健康监控（通过device_id访问）"
+    },
+    {
+      "name": "数据采集",
+      "description": "接收传感器、喂食机等设备的数据上报（直接使用device_id）"
+    },
+    {
+      "name": "配置和字典",
+      "description": "用于支持前端表单的配置接口"
+    }
+  ],
+  "paths": {
+    "/v1/get_pond_list": {
+      "get": {
+        "tags": ["养殖池管理"],
+        "summary": "获取养殖池列表",
+        "description": "获取所有养殖池列表（轻量接口，只返回id和name）",
+        "operationId": "getPondList",
+        "responses": {
+          "200": {
+            "description": "成功获取养殖池列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PondListItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/get_pond_detail": {
+      "get": {
+        "tags": ["养殖池管理"],
+        "summary": "获取池塘详细信息",
+        "description": "获取指定池塘的详细信息，包括传感器数据、批次信息等",
+        "operationId": "getPondDetail",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "query",
+            "description": "池塘ID（数据库主键）",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取池塘详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondDetail"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "pond_name": "1号养殖池",
+                    "pond_id": "1",
+                    "detail": {
+                      "pond": {
+                        "area": 100.0,
+                        "species": {
+                          "type": "Litopenaeus vannamei",
+                          "number": 50000
+                        }
+                      },
+                      "sensor": {
+                        "water_temperature": 25.5,
+                        "pH": 7.2,
+                        "Dissolved_oxygen": 8.5,
+                        "liquid_level": 1.2,
+                        "Turbidity": 5.0
+                      },
+                      "environment": {
+                        "time": 1705223400,
+                        "region": "筑波",
+                        "weather": "sunny",
+                        "temperature": 25.5
+                      },
+                      "stats_image": {
+                        "length": "http://8.216.33.92:5002/static/pond_images/length/live_shrimp_size_distribution_1.png",
+                        "weight": "http://8.216.33.92:5002/static/pond_images/weight/live_shrimp_weight_distribution_1.png"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/update_pond_detail": {
+      "post": {
+        "tags": ["养殖池管理"],
+        "summary": "更新池塘基本信息",
+        "description": "更新池塘的基本信息（名称、面积、物种、描述等），支持部分更新",
+        "operationId": "updatePondDetail",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "query",
+            "description": "池塘ID（数据库主键）",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "更新的池塘基本信息（支持部分更新）",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PondUpdateRequest"
+              },
+              "examples": {
+                "updateName": {
+                  "summary": "更新池塘名称",
+                  "value": {
+                    "detail": {
+                      "pond": {
+                        "name": "1号养殖池（已升级）"
+                      }
+                    }
+                  }
+                },
+                "updateArea": {
+                  "summary": "更新池塘面积和数量",
+                  "value": {
+                    "detail": {
+                      "pond": {
+                        "area": 120.0,
+                        "species": {
+                          "number": 60000
+                        }
+                      }
+                    }
+                  }
+                },
+                "updateSpecies": {
+                  "summary": "更新物种信息",
+                  "value": {
+                    "detail": {
+                      "pond": {
+                        "species": {
+                          "type": "Litopenaeus vannamei",
+                          "number": 60000
+                        }
+                      }
+                    }
+                  }
+                },
+                "updateAll": {
+                  "summary": "更新所有基本信息",
+                  "value": {
+                    "detail": {
+                      "pond": {
+                        "name": "1号养殖池（已升级）",
+                        "description": "主养殖池，已升级设备",
+                        "area": 120.0,
+                        "species": {
+                          "type": "Litopenaeus vannamei",
+                          "number": 60000
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "成功更新 5 个字段"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondDetail"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "成功更新 3 个字段",
+                  "data": {
+                    "pond_name": "1号养殖池（已升级）",
+                    "pond_id": "1",
+                    "detail": {
+                      "pond": {
+                        "area": 120.0,
+                        "species": {
+                          "type": "Litopenaeus vannamei",
+                          "number": 60000
+                        }
+                      },
+                      "sensor": {
+                        "water_temperature": 25.5,
+                        "pH": 7.2,
+                        "Dissolved_oxygen": 8.5,
+                        "liquid_level": 1.2,
+                        "Turbidity": 5.0
+                      },
+                      "environment": {
+                        "time": 1705223400,
+                        "region": "筑波",
+                        "weather": "sunny",
+                        "temperature": 25.5
+                      },
+                      "stats_image": {
+                        "length": "http://8.216.33.92:5002/static/pond_images/length/live_shrimp_size_distribution_1.png",
+                        "weight": "http://8.216.33.92:5002/static/pond_images/weight/live_shrimp_weight_distribution_1.png"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误或更新失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "缺少参数 pond_id"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                },
+                "examples": {
+                  "missingPondId": {
+                    "summary": "缺少pond_id参数",
+                    "value": {
+                      "code": 400,
+                      "message": "缺少参数 pond_id",
+                      "data": null
+                    }
+                  },
+                  "missingData": {
+                    "summary": "缺少更新数据",
+                    "value": {
+                      "code": 400,
+                      "message": "缺少更新数据",
+                      "data": null
+                    }
+                  },
+                  "noFieldsToUpdate": {
+                    "summary": "没有需要更新的字段",
+                    "value": {
+                      "code": 400,
+                      "message": "没有需要更新的字段",
+                      "data": null
+                    }
+                  },
+                  "pondNotFound": {
+                    "summary": "池塘不存在",
+                    "value": {
+                      "code": 400,
+                      "message": "池塘 999 不存在",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "服务器内部错误: ..."
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                },
+                "example": {
+                  "code": 500,
+                  "message": "服务器内部错误: 数据库连接失败",
+                  "data": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sensors/realtime": {
+      "get": {
+        "tags": ["传感器和监控"],
+        "summary": "获取所有传感器的实时数据",
+        "description": "从 sensor_types 表中每个 metric 在 sensor_readings 表中相同 metric 值的最新 N 条记录",
+        "operationId": "getSensorRealtime",
+        "responses": {
+          "200": {
+            "description": "成功获取传感器实时数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "传感器数据，按类型分组（temperature, ph, oxygen, level, turbidity, ammonia, nitrite, light, flow）",
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timestamp": {
+                              "type": "integer",
+                              "description": "Unix时间戳（毫秒）",
+                              "example": 1705223400000
+                            },
+                            "value": {
+                              "type": "number",
+                              "description": "传感器读数值",
+                              "example": 25.5
+                            },
+                            "time": {
+                              "type": "string",
+                              "description": "时间字符串（HH:MM）",
+                              "example": "10:30"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "响应时间戳（毫秒）",
+                      "example": 1705223400000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/status": {
+      "get": {
+        "tags": ["传感器和监控"],
+        "summary": "获取所有设备的状态信息",
+        "description": "从统一设备表获取所有未删除设备的状态信息，传感器设备包含额外的info字段",
+        "operationId": "getDevicesStatus",
+        "responses": {
+          "200": {
+            "description": "成功获取设备状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DeviceStatus"
+                      }
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "响应时间戳（毫秒）",
+                      "example": 1705223400000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{device_id}/status": {
+      "get": {
+        "tags": ["摄像头"],
+        "summary": "获取摄像头状态数据",
+        "description": "获取指定摄像头设备的状态信息（通过devices.id访问）",
+        "operationId": "getCameraStatus",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "摄像头设备ID（devices.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取摄像头状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CameraStatus"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "摄像头状态数据不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "摄像头状态数据不可用"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{device_id}/image": {
+      "get": {
+        "tags": ["摄像头"],
+        "summary": "获取摄像头图片",
+        "description": "获取指定摄像头设备的最新图片数据（通过devices.id访问）",
+        "operationId": "getCameraImage",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "摄像头设备ID（devices.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取摄像头图片",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "摄像头图片数据（包含URL、尺寸等信息）"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "摄像头图片数据不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "摄像头图片数据不可用"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{device_id}/health": {
+      "get": {
+        "tags": ["摄像头"],
+        "summary": "获取摄像头健康状态",
+        "description": "获取指定摄像头设备的健康状态信息（通过devices.id访问）",
+        "operationId": "getCameraHealth",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "摄像头设备ID（devices.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取摄像头健康状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "摄像头健康状态数据"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "摄像头健康状态数据不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "摄像头健康状态数据不可用"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get_device_type_list": {
+      "get": {
+        "tags": ["配置和字典"],
+        "summary": "获取设备类型列表",
+        "description": "获取所有设备类型列表（轻量接口，只返回id、category、name），用于设备创建时选择设备类型",
+        "operationId": "getDeviceTypeList",
+        "responses": {
+          "200": {
+            "description": "成功获取设备类型列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DeviceTypeListItem"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": [
+                    {
+                      "id": 1,
+                      "category": "sensor",
+                      "name": "传感器"
+                    },
+                    {
+                      "id": 2,
+                      "category": "feeder",
+                      "name": "喂食机"
+                    },
+                    {
+                      "id": 3,
+                      "category": "camera",
+                      "name": "摄像头"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/get_device_list": {
+      "get": {
+        "tags": ["设备管理"],
+        "summary": "获取设备列表",
+        "description": "获取设备列表（过滤已软删除的设备），支持按养殖池、状态、控制模式、设备类别筛选，支持按设备名称或device_id搜索，支持分页。\n\n**info字段说明**：\n- 传感器设备：info 包含 sensor_types 表的传感器类型信息\n- 其他设备：info 直接返回 device_specific_config 的内容\n\n**搜索功能**：\n- 使用 `search` 参数可以按设备名称或 `device_id` 进行模糊搜索",
+        "operationId": "getDeviceList",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "设备状态筛选（online=在线，offline=离线）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["online", "offline"]
+            }
+          },
+          {
+            "name": "pond_id",
+            "in": "query",
+            "description": "养殖池ID筛选",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "control_mode",
+            "in": "query",
+            "description": "权限分配筛选（manual_only=仅人工，ai_only=仅AI，hybrid=人工/AI）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["manual_only", "ai_only", "hybrid"]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "设备类别筛选",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "搜索关键词（按设备名称或device_id模糊搜索）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "溶解氧"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（从1开始）",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取设备列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "description": "设备列表",
+                          "items": {
+                            "$ref": "#/components/schemas/DeviceDetail"
+                          }
+                        },
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "sensor_device": {
+                    "summary": "传感器设备示例",
+                    "value": {
+                      "code": 200,
+                      "message": "success",
+                      "data": {
+                        "items": [
+                          {
+                            "id": 1,
+                            "device_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "name": "一号池溶解氧传感器",
+                            "description": "用于监测一号池的溶解氧浓度",
+                            "ownership": "ABQ养殖场",
+                            "device_type_id": 1,
+                            "sensor_type_id": 1,
+                            "device_type_name": "传感器",
+                            "device_category": "sensor",
+                            "model": "DO-2000",
+                            "manufacturer": "海洋仪器公司",
+                            "serial_number": "SN123456789",
+                            "location": "一号池中央区域",
+                            "pond_id": 1,
+                            "connection_info": {
+                              "url": "http://192.168.1.100",
+                              "username": "admin",
+                              "password": "password"
+                            },
+                            "device_specific_config": {
+                              "sampling_rate": 60,
+                              "alert_threshold": 5.0
+                            },
+                            "tags": "重点监控,核心设备",
+                            "status": "online",
+                            "control_mode": "hybrid",
+                            "created_at": "2026-01-14T10:30:00Z",
+                            "updated_at": "2026-01-14T10:30:00Z",
+                            "info": {
+                              "sensor_type_id": 1,
+                              "sensor_type_name": "溶解氧传感器",
+                              "metric": "do",
+                              "unit": "mg/L",
+                              "valid_min": 3.0,
+                              "valid_max": 15.0,
+                              "description": "用于测量水体中溶解氧含量"
+                            }
+                          }
+                        ],
+                        "pagination": {
+                          "page": 1,
+                          "page_size": 5,
+                          "total": 10,
+                          "total_pages": 2,
+                          "has_next": true,
+                          "has_prev": false
+                        }
+                      }
+                    }
+                  },
+                  "feeder_device": {
+                    "summary": "喂食机设备示例",
+                    "value": {
+                      "code": 200,
+                      "message": "success",
+                      "data": {
+                        "items": [
+                          {
+                            "id": 2,
+                            "device_id": "660e8400-e29b-41d4-a716-446655440001",
+                            "name": "一号池自动喂食机",
+                            "description": "自动投喂系统",
+                            "ownership": "ABQ养殖场",
+                            "device_type_id": 2,
+                            "sensor_type_id": null,
+                            "device_type_name": "喂食机",
+                            "device_category": "feeder",
+                            "model": "FEED-3000",
+                            "manufacturer": "智能设备公司",
+                            "serial_number": "SN987654321",
+                            "location": "一号池边缘",
+                            "pond_id": 1,
+                            "connection_info": {
+                              "url": "http://192.168.1.101",
+                              "username": "admin",
+                              "password": "password"
+                            },
+                            "device_specific_config": {
+                              "feed_count": 3,
+                              "feed_portion_weight": 20.0,
+                              "timezone": 9,
+                              "network_type": 0,
+                              "group_id": "GROUP-A",
+                              "capacity_kg": 100.0,
+                              "feed_type": "虾料A型"
+                            },
+                            "tags": "自动投喂",
+                            "status": "online",
+                            "control_mode": "hybrid",
+                            "created_at": "2026-01-14T10:30:00Z",
+                            "updated_at": "2026-01-14T10:30:00Z",
+                            "info": {
+                              "feed_count": 3,
+                              "feed_portion_weight": 20.0,
+                              "timezone": 9,
+                              "network_type": 0,
+                              "group_id": "GROUP-A",
+                              "capacity_kg": 100.0,
+                              "feed_type": "虾料A型"
+                            }
+                          }
+                        ],
+                        "pagination": {
+                          "page": 1,
+                          "page_size": 5,
+                          "total": 10,
+                          "total_pages": 2,
+                          "has_next": true,
+                          "has_prev": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/device": {
+      "post": {
+        "tags": ["设备管理"],
+        "summary": "创建新设备",
+        "description": "创建新设备记录（统一设备表架构）。\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型如sensor、feeder等获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**，根据sensor_type列表获取）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式，包含连接地址、账户名、密码等）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的 `devices` 表中\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在 `device_specific_config` 字段中",
+        "operationId": "createDevice",
+        "requestBody": {
+          "description": "新设备信息",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreateRequest"
+              },
+              "example": {
+                "name": "一号池溶解氧传感器",
+                "ownership": "ABQ养殖场",
+                "device_type_id": 1,
+                "sensor_type_id": 1,
+                "description": "用于监测一号池的溶解氧浓度",
+                "pond_id": 1,
+                "location": "一号池中央区域",
+                "model": "DO-2000",
+                "manufacturer": "海洋仪器公司",
+                "serial_number": "SN123456789",
+                "connection_info": {
+                  "url": "http://192.168.1.100",
+                  "username": "admin",
+                  "password": "password"
+                },
+                "status": "online",
+                "control_mode": "hybrid",
+                "device_specific_config": {
+                  "sampling_rate": 60,
+                  "alert_threshold": 5.0
+                },
+                "tags": "重点监控,核心设备"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "设备创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备创建成功"
+                    },
+                    "data": {
+                  "type": "object",
+                  "properties": {
+                        "id": {
+                      "type": "integer",
+                          "description": "设备主键ID"
+                    },
+                        "device_id": {
+                      "type": "string",
+                          "description": "设备唯一标识符（UUID）"
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "设备名称"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/device/{device_id}": {
+      "put": {
+        "tags": ["设备管理"],
+        "summary": "更新设备信息",
+        "description": "更新设备信息，支持部分更新。\n\n**只允许更新以下字段**：\n- `name`：设备名称\n- `description`：设备描述\n- `location`：设备位置\n- `status`：设备状态（online/offline）\n- `device_specific_config`：设备专属配置JSON\n- `connection_info`：设备连接信息JSON（包含连接地址、账户名、密码等）\n- `pond_id`：养殖池ID\n- `control_mode`：权限分配（manual_only/ai_only/hybrid）",
+        "operationId": "updateDevice",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "设备ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "更新的设备信息（支持部分更新）",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceUpdateRequest"
+              },
+              "example": {
+                "name": "更新后的设备名称",
+                "description": "更新后的设备描述",
+                "location": "更新后的设备位置",
+                "status": "online",
+                "connection_info": {
+                  "url": "http://192.168.1.100",
+                  "username": "admin",
+                  "password": "password"
+                },
+                "device_specific_config": {
+                  "sampling_rate": 60,
+                  "alert_threshold": 5.0
+                },
+                "pond_id": 1,
+                "control_mode": "hybrid"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "设备更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备更新成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "device_id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["设备管理"],
+        "summary": "删除设备",
+        "description": "软删除设备（设置 is_deleted=true），设备数据保留但不再展示",
+        "operationId": "deleteDevice",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "设备ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "设备删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备删除成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "device_id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "设备已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备已被删除"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/data/sensors": {
+      "post": {
+        "tags": ["数据采集"],
+        "summary": "接收传感器数据",
+        "description": "接收传感器上报的数据。\n\n**重要说明**：\n- `sensor_id` 现在直接使用 `devices.id`（设备主键ID）\n- metric 和传感器类型信息从 `device.sensor_type_id` 关联的 `sensor_types` 表自动获取\n- 异常值检测使用 `sensor_types` 表的 `valid_min` 和 `valid_max` 字段",
+        "operationId": "receiveSensorData",
+        "requestBody": {
+          "description": "传感器数据",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["sensor_id", "value"],
+                "properties": {
+                  "sensor_id": {
+                    "type": "string",
+                    "description": "传感器设备主键ID（字符串形式的整数，对应devices.id）",
+                    "example": "1"
+                  },
+                  "value": {
+                    "type": "number",
+                    "description": "传感器读数值",
+                    "example": 25.5
+                  },
+                  "pool_id": {
+                    "type": "string",
+                    "description": "养殖池主键ID（字符串形式的整数，如未提供则从device.pond_id获取）",
+                    "example": "1"
+                  },
+                  "batch_id": {
+                    "type": "string",
+                    "description": "批次主键ID（字符串形式的整数）",
+                    "example": "1"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "description": "单位（可选，如不提供则使用sensor_types表的unit）",
+                    "example": "°C"
+                  },
+                  "timestamp": {
+                    "type": "integer",
+                    "description": "Unix时间戳（毫秒）",
+                    "example": 1705223400000
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "描述信息",
+                    "example": "1号池温度"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "传感器数据接收成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": "记录ID"
+                        },
+                        "sensor_id": {
+                          "type": "integer",
+                          "description": "传感器设备ID（devices.id）"
+                        },
+                        "value": {
+                          "type": "number",
+                          "description": "传感器值"
+                        },
+                        "quality_flag": {
+                          "type": "string",
+                          "description": "质量标记（ok/anomaly）",
+                          "example": "ok"
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "example": 1705223400000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/data/feeders": {
+      "post": {
+        "tags": ["数据采集"],
+        "summary": "接收喂食机数据",
+        "description": "接收喂食机上报的投喂数据。\n\n**重要说明**：\n- `feeder_id` 现在直接使用 `devices.id`（设备主键ID）",
+        "operationId": "receiveFeederData",
+        "requestBody": {
+          "description": "喂食机数据",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["feeder_id"],
+                "properties": {
+                  "feeder_id": {
+                    "type": "string",
+                    "description": "喂食机设备主键ID（字符串形式的整数，对应devices.id）",
+                    "example": "1"
+                  },
+                  "batch_id": {
+                    "type": "string",
+                    "description": "批次主键ID（字符串形式的整数）",
+                    "example": "1"
+                  },
+                  "pool_id": {
+                    "type": "string",
+                    "description": "养殖池主键ID（字符串形式的整数，如未提供则从device.pond_id获取）",
+                    "example": "1"
+                  },
+                  "feed_amount_g": {
+                    "type": "number",
+                    "description": "投喂量（克）",
+                    "example": 500.0
+                  },
+                  "run_time_s": {
+                    "type": "integer",
+                    "description": "运行时长（秒）",
+                    "example": 120
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "状态（ok/warning/error）",
+                    "enum": ["ok", "warning", "error"],
+                    "example": "ok"
+                  },
+                  "leftover_estimate_g": {
+                    "type": "number",
+                    "description": "剩余估计量（克）",
+                    "example": 50.0
+                  },
+                  "timestamp": {
+                    "type": "integer",
+                    "description": "Unix时间戳（毫秒）",
+                    "example": 1705223400000
+                  },
+                  "notes": {
+                    "type": "string",
+                    "description": "备注",
+                    "example": "正常投喂"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "喂食机数据接收成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": "记录ID"
+                        },
+                        "feeder_id": {
+                          "type": "integer",
+                          "description": "喂食机设备ID（devices.id）"
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": "状态",
+                          "example": "ok"
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "example": 1705223400000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/data/operations": {
+      "post": {
+        "tags": ["数据采集"],
+        "summary": "接收操作日志数据",
+        "description": "接收用户操作日志数据",
+        "operationId": "receiveOperationData",
+        "requestBody": {
+          "description": "操作日志数据",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["user_id", "action_type"],
+                "properties": {
+                  "user_id": {
+                    "type": "string",
+                    "description": "用户主键ID（字符串形式的整数，对应users.id）",
+                    "example": "1"
+                  },
+                  "action_type": {
+                    "type": "string",
+                    "description": "操作类型",
+                    "example": "投料"
+                  },
+                  "batch_id": {
+                    "type": "string",
+                    "description": "批次主键ID（字符串形式的整数）",
+                    "example": "1"
+                  },
+                  "pool_id": {
+                    "type": "string",
+                    "description": "养殖池主键ID（字符串形式的整数）",
+                    "example": "1"
+                  },
+                  "remarks": {
+                    "type": "string",
+                    "description": "备注",
+                    "example": "正常投喂操作"
+                  },
+                  "attachment_uri": {
+                    "type": "string",
+                    "description": "附件URI",
+                    "example": "s3://bucket/file.pdf"
+                  },
+                  "timestamp": {
+                    "type": "integer",
+                    "description": "Unix时间戳（毫秒）",
+                    "example": 1705223400000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "操作日志接收成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": "记录ID"
+                        },
+                        "user_id": {
+                          "type": "integer",
+                          "description": "用户ID"
+                        },
+                        "action_type": {
+                          "type": "string",
+                          "description": "操作类型"
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "example": 1705223400000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/device/test-connection": {
+      "post": {
+        "tags": ["设备管理"],
+        "summary": "设备连接测试",
+        "description": "测试设备连接是否正常（统一接口）。\n\n根据设备类别（category）调用对应的连接测试逻辑。\n\n**当前支持的设备类别**：\n- `feeder`: 喂食机\n\n**后续将支持**：\n- `camera`: 摄像头\n- 其他设备类型\n\n**喂食机 (feeder) 的 connection_info 字段**：\n- `base_url`: API地址（必填），如: `https://ffish.huaeran.cn:8081/commonRequest`\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）",
+        "operationId": "testDeviceConnection",
+        "requestBody": {
+          "description": "设备连接测试请求",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceConnectionTestRequest"
+              },
+              "examples": {
+                "feeder": {
+                  "summary": "喂食机连接测试",
+                  "value": {
+                    "category": "feeder",
+                    "connection_info": {
+                      "base_url": "https://ffish.huaeran.cn:8081/commonRequest",
+                      "user_id": "admin",
+                      "password": "123456"
+                    },
+                    "timeout": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "测试完成（无论成功或失败都返回200，通过data.success判断结果）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "description": "状态码（200=测试成功，400=测试失败）",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "状态消息",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceConnectionTestResponse"
+                    }
+                  }
+                },
+                "examples": {
+                  "success": {
+                    "summary": "连接成功",
+                    "value": {
+                      "code": 200,
+                      "message": "success",
+                      "data": {
+                        "success": true,
+                        "message": "✅ 连接测试成功，设备可以正常连接",
+                        "details": {
+                          "authkey": "abc123def4...",
+                          "response_status": 1
+                        }
+                      }
+                    }
+                  },
+                  "failed_auth": {
+                    "summary": "认证失败",
+                    "value": {
+                      "code": 400,
+                      "message": "failed",
+                      "data": {
+                        "success": false,
+                        "message": "❌ 连接测试失败: status=0",
+                        "details": {
+                          "error": "用户名或密码错误",
+                          "response_status": 0
+                        }
+                      }
+                    }
+                  },
+                  "failed_timeout": {
+                    "summary": "连接超时",
+                    "value": {
+                      "code": 400,
+                      "message": "failed",
+                      "data": {
+                        "success": false,
+                        "message": "❌ 连接超时",
+                        "details": {
+                          "error": "请求在 15 秒内未响应",
+                          "timeout": 15
+                        }
+                      }
+                    }
+                  },
+                  "failed_connection": {
+                    "summary": "无法连接",
+                    "value": {
+                      "code": 400,
+                      "message": "failed",
+                      "data": {
+                        "success": false,
+                        "message": "❌ 无法连接到服务器",
+                        "details": {
+                          "error": "连接错误: Connection refused"
+                        }
+                      }
+                    }
+                  },
+                  "unsupported_category": {
+                    "summary": "不支持的设备类别",
+                    "value": {
+                      "code": 400,
+                      "message": "failed",
+                      "data": {
+                        "success": false,
+                        "message": "❌ 不支持的设备类别: camera",
+                        "details": {
+                          "error": "当前支持的设备类别: feeder",
+                          "category": "camera"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/device/test-connection/supported": {
+      "get": {
+        "tags": ["设备管理"],
+        "summary": "获取支持连接测试的设备类别",
+        "description": "获取当前支持连接测试的设备类别列表",
+        "operationId": "getSupportedConnectionTestCategories",
+        "responses": {
+          "200": {
+            "description": "成功获取支持的设备类别列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "supported_categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "example": ["feeder"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/get_sensor_type_list": {
+      "get": {
+        "tags": ["配置和字典"],
+        "summary": "获取传感器类型列表",
+        "description": "获取所有传感器类型列表（轻量接口，只返回id和type_name），用于传感器设备创建时选择具体的传感器类型（sensor_type_id）",
+        "operationId": "getSensorTypes",
+        "responses": {
+          "200": {
+            "description": "获取传感器类型列表成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SensorTypeListItem"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": [
+                    {
+                      "id": 1,
+                      "type_name": "溶解氧传感器"
+                    },
+                    {
+                      "id": 2,
+                      "type_name": "pH传感器"
+                    },
+                    {
+                      "id": 3,
+                      "type_name": "温度传感器"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PondListItem": {
+        "type": "object",
+        "description": "养殖池列表项（轻量）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "数据库主键ID",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          }
+        }
+      },
+      "Pond": {
+        "type": "object",
+        "description": "养殖池详细信息（对应ponds表）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "数据库主键ID",
+            "example": 1
+          },
+          "pond_id": {
+            "type": "string",
+            "description": "养殖池业务ID（唯一标识符）",
+            "example": "POND_001"
+          },
+          "name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "description": "位置信息",
+            "example": "A区"
+          },
+          "area": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "养殖池实际面积（平方米）",
+            "example": 100.0
+          },
+          "count": {
+            "type": "integer",
+            "nullable": true,
+            "description": "养殖池实际统计的数量（尾数）",
+            "example": 50000
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "描述/备注",
+            "example": "主养殖池"
+          }
+        }
+      },
+      "PondDetail": {
+        "type": "object",
+        "description": "池塘详细信息（用于/v1/get_pond_detail接口）",
+        "properties": {
+          "pond_name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "pond_id": {
+            "type": "string",
+            "description": "池塘ID（数据库主键）",
+            "example": "1"
+          },
+          "detail": {
+            "type": "object",
+            "description": "池塘详细信息",
+            "properties": {
+              "pond": {
+                "type": "object",
+                "description": "池塘基本信息",
+                "properties": {
+                  "area": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "养殖池面积（平方米）",
+                    "example": 100.0
+                  },
+                  "species": {
+                    "type": "object",
+                    "description": "物种信息",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "物种类型",
+                        "example": "Litopenaeus vannamei"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "description": "养殖数量（尾数）",
+                        "example": 50000
+                      }
+                    }
+                  }
+                }
+              },
+              "sensor": {
+                "type": "object",
+                "description": "传感器数据（根据实际传感器设备动态返回）",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "example": {
+                  "water_temperature": 25.5,
+                  "pH": 7.2,
+                  "Dissolved_oxygen": 8.5,
+                  "liquid_level": 1.2,
+                  "Turbidity": 5.0
+                }
+              },
+              "environment": {
+                "type": "object",
+                "description": "环境信息",
+                "properties": {
+                  "time": {
+                    "type": "integer",
+                    "description": "时间戳（Unix秒）",
+                    "example": 1705223400
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "地区",
+                    "example": "筑波"
+                  },
+                  "weather": {
+                    "type": "string",
+                    "description": "天气",
+                    "example": "sunny"
+                  },
+                  "temperature": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "温度",
+                    "example": 25.5
+                  }
+                }
+              },
+              "stats_image": {
+                "type": "object",
+                "description": "统计图像路径",
+                "properties": {
+                  "length": {
+                    "type": "string",
+                    "description": "长度分布图URL",
+                    "example": "http://8.216.33.92:5002/static/pond_images/length/live_shrimp_size_distribution_1.png"
+                  },
+                  "weight": {
+                    "type": "string",
+                    "description": "重量分布图URL",
+                    "example": "http://8.216.33.92:5002/static/pond_images/weight/live_shrimp_weight_distribution_1.png"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "PondUpdateRequest": {
+        "type": "object",
+        "description": "更新池塘基本信息请求体（支持部分更新）",
+        "properties": {
+          "detail": {
+            "type": "object",
+            "description": "要更新的池塘基本信息（所有字段都是可选的，支持部分更新）",
+            "properties": {
+              "pond": {
+                "type": "object",
+                "description": "池塘基本信息",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "养殖池名称",
+                    "example": "1号养殖池（已升级）"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "描述/备注",
+                    "example": "主养殖池"
+                  },
+                  "area": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "养殖池面积（平方米）",
+                    "example": 120.0
+                  },
+                  "species": {
+                    "type": "object",
+                    "description": "物种信息",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "物种类型（更新到批次表）",
+                        "example": "Litopenaeus vannamei"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "description": "养殖数量（尾数，更新到ponds.count）",
+                        "example": 60000
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "DeviceTypeListItem": {
+        "type": "object",
+        "description": "设备类型列表项（轻量）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "设备类型ID",
+            "example": 1
+          },
+          "category": {
+            "type": "string",
+            "description": "设备类别",
+            "example": "sensor"
+          },
+          "name": {
+            "type": "string",
+            "description": "设备类型名称",
+            "example": "传感器"
+          }
+        }
+      },
+      "DeviceType": {
+        "type": "object",
+        "description": "设备类型详细信息（对应device_types表）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "设备类型ID",
+            "example": 1
+          },
+          "category": {
+            "type": "string",
+            "description": "设备类别",
+            "example": "sensor"
+          },
+          "name": {
+            "type": "string",
+            "description": "设备类型名称",
+            "example": "传感器"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备类型描述",
+            "example": "各类传感器设备"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DeviceStatus": {
+        "type": "object",
+        "description": "设备状态信息（用于/devices/status接口）",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "设备标识（格式：device_{id}）",
+            "example": "device_1"
+          },
+          "device_id": {
+            "type": "string",
+            "description": "设备唯一标识符（UUID）",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "一号池溶解氧传感器"
+          },
+          "type": {
+            "type": "string",
+            "description": "设备类型（前端显示用）",
+            "example": "sensor"
+          },
+          "category": {
+            "type": "string",
+            "description": "设备类别",
+            "example": "sensor"
+          },
+          "type_name": {
+            "type": "string",
+            "description": "设备类型名称",
+            "example": "传感器"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态（中文）",
+            "example": "运行中"
+          },
+          "statusColor": {
+            "type": "string",
+            "description": "状态颜色",
+            "example": "#20B2AA"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "设备参数（来自device_specific_config）"
+          },
+          "info": {
+            "type": "object",
+            "description": "传感器类型信息（仅传感器设备有此字段）",
+            "nullable": true
+          },
+          "lastUpdate": {
+            "type": "integer",
+            "description": "最后更新时间戳（毫秒）",
+            "example": 1705223400000
+          },
+          "lastUpdateTime": {
+            "type": "string",
+            "description": "最后更新时间（HH:MM:SS）",
+            "example": "10:30:00"
+          },
+          "location": {
+            "type": "string",
+            "description": "设备位置",
+            "example": "一号池中央区域"
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "所属养殖池ID",
+            "example": 1
+          }
+        }
+      },
+      "CameraStatus": {
+        "type": "object",
+        "description": "摄像头状态信息",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "设备ID（devices.id）",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "一号池监控摄像头"
+          },
+          "location": {
+            "type": "string",
+            "description": "设备位置",
+            "example": "一号池上方"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "example": "online"
+          },
+          "quality": {
+            "type": "string",
+            "description": "画质",
+            "example": "高"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "分辨率",
+            "example": "1920x1080"
+          },
+          "fps": {
+            "type": "integer",
+            "description": "帧率",
+            "example": 30
+          },
+          "lastUpdate": {
+            "type": "integer",
+            "description": "最后更新时间戳（毫秒）",
+            "example": 1705223400000
+          },
+          "lastUpdateTime": {
+            "type": "string",
+            "description": "最后更新时间（HH:MM:SS）",
+            "example": "10:30:00"
+          },
+          "temperature": {
+            "type": "number",
+            "nullable": true,
+            "description": "温度",
+            "example": 25.5
+          },
+          "connectivity": {
+            "type": "integer",
+            "description": "连通性百分比",
+            "example": 100
+          },
+          "recording": {
+            "type": "boolean",
+            "description": "是否正在录制",
+            "example": true
+          },
+          "nightVision": {
+            "type": "boolean",
+            "description": "是否开启夜视",
+            "example": true
+          },
+          "motionDetection": {
+            "type": "boolean",
+            "description": "是否开启运动检测",
+            "example": true
+          }
+        }
+      },
+      "DeviceDetail": {
+        "type": "object",
+        "description": "设备完整信息（统一设备表架构）\n\n**info字段说明**：\n- 传感器设备：info 包含 sensor_types 表的传感器类型信息\n- 其他设备：info 直接返回 device_specific_config 的内容",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "设备主键ID",
+            "example": 1
+          },
+          "device_id": {
+            "type": "string",
+            "description": "设备唯一标识符（UUID）",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "一号池溶解氧传感器"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备描述",
+            "example": "用于监测一号池的溶解氧浓度"
+          },
+          "ownership": {
+            "type": "string",
+            "description": "设备归属",
+            "example": "ABQ养殖场"
+          },
+          "device_type_id": {
+            "type": "integer",
+            "description": "设备类型ID（FK → device_types.id）",
+            "example": 1
+          },
+          "sensor_type_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "传感器类型ID（FK → sensor_types.id，仅传感器设备有此字段）",
+            "example": 1
+          },
+          "device_type_name": {
+            "type": "string",
+            "description": "设备类型名称",
+            "example": "传感器"
+          },
+          "device_category": {
+            "type": "string",
+            "description": "设备类别",
+            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"],
+            "example": "sensor"
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备型号",
+            "example": "DO-2000"
+          },
+          "manufacturer": {
+            "type": "string",
+            "nullable": true,
+            "description": "制造商",
+            "example": "海洋仪器公司"
+          },
+          "serial_number": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备序列号",
+            "example": "SN123456789"
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备安装位置",
+            "example": "一号池中央区域"
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "所属养殖池ID",
+            "example": 1
+          },
+          "connection_info": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "example": {
+              "url": "http://192.168.1.100",
+              "username": "admin",
+              "password": "password"
+            }
+          },
+          "device_specific_config": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备专属配置（JSON格式）",
+            "example": {
+              "sampling_rate": 60,
+              "alert_threshold": 5.0
+            }
+          },
+          "tags": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备标签（逗号分隔）",
+            "example": "重点监控,核心设备"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": ["online", "offline"],
+            "example": "online"
+          },
+          "control_mode": {
+            "type": "string",
+            "description": "控制权限模式",
+            "enum": ["manual_only", "ai_only", "hybrid"],
+            "example": "hybrid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间",
+            "example": "2026-01-14T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间",
+            "example": "2026-01-14T10:30:00Z"
+          },
+          "info": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SensorTypeInfo"
+              },
+              {
+                "type": "object",
+                "description": "设备配置信息（非传感器设备直接返回device_specific_config内容）"
+              }
+            ],
+            "description": "设备扩展信息\n- 传感器设备：返回sensor_types表的传感器类型信息\n- 其他设备：直接返回device_specific_config内容",
+            "nullable": true
+          }
+        }
+      },
+      "SensorTypeInfo": {
+        "type": "object",
+        "description": "传感器类型信息（作为传感器设备的info字段返回）",
+        "properties": {
+          "sensor_type_id": {
+            "type": "integer",
+            "description": "传感器类型ID",
+            "example": 1
+          },
+          "sensor_type_name": {
+            "type": "string",
+            "description": "传感器类型名称",
+            "example": "溶解氧传感器"
+          },
+          "metric": {
+            "type": "string",
+            "description": "测量指标标识符",
+            "example": "do"
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位",
+            "example": "mg/L"
+          },
+          "valid_min": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "有效值下限",
+            "example": 3.0
+          },
+          "valid_max": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "有效值上限",
+            "example": 15.0
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "传感器类型描述",
+            "example": "测量水体溶解氧含量"
+      },
+          "latest_value": {
+            "type": "number",
+            "nullable": true,
+            "description": "最新读数值",
+            "example": 7.5
+          },
+          "latest_reading_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "最新读数时间",
+            "example": "2026-01-14 10:30:00"
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "description": "分页信息",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页数量",
+            "example": 5
+          },
+          "total": {
+            "type": "integer",
+            "description": "总记录数",
+            "example": 50
+          },
+          "total_pages": {
+            "type": "integer",
+            "description": "总页数",
+            "example": 10
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "是否有下一页",
+            "example": true
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "是否有上一页",
+            "example": false
+          }
+        }
+      },
+      "DeviceCreateRequest": {
+        "type": "object",
+        "description": "创建设备请求体（统一设备表架构）\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式，包含连接地址、账户名、密码等）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的devices表中\n- 传感器设备不需要在device_specific_config中存储类型信息（通过sensor_type_id关联sensor_types表获取）\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在device_specific_config字段中（如喂食机的feed_count、摄像头的resolution等）\n- 设备连接信息（连接地址、账户名、密码等）统一放在connection_info字段中",
+        "required": ["name", "device_type_id", "pond_id", "location", "control_mode"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "设备名称（必填）",
+            "example": "一号池溶解氧传感器",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "ownership": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备归属（可选）",
+            "example": "ABQ养殖场"
+          },
+          "device_type_id": {
+            "type": "integer",
+            "description": "设备类型ID（必填，FK → device_types.id）",
+            "example": 1
+          },
+          "sensor_type_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "传感器类型ID（**仅当设备类型为sensor时必填**，根据sensor_type列表获取，FK → sensor_types.id）",
+            "example": 1
+          },
+          "pond_id": {
+            "type": "integer",
+            "description": "养殖池ID（必填）",
+            "example": 1
+          },
+          "location": {
+            "type": "string",
+            "description": "设备安装位置（必填）",
+            "example": "一号池中央区域"
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备型号",
+            "example": "DO-2000"
+          },
+          "manufacturer": {
+            "type": "string",
+            "nullable": true,
+            "description": "制造商",
+            "example": "海洋仪器公司"
+          },
+          "serial_number": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备序列号（唯一）",
+            "example": "SN123456789"
+          },
+          "connection_info": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "example": {
+              "url": "http://192.168.1.100",
+              "username": "admin",
+              "password": "password"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态（默认：online）",
+            "enum": ["online", "offline"],
+            "default": "online",
+            "example": "online"
+          },
+          "control_mode": {
+            "type": "string",
+            "description": "控制权限模式（必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）",
+            "enum": ["manual_only", "ai_only", "hybrid"],
+            "example": "hybrid"
+      },
+          "device_specific_config": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备专属配置（JSON格式）\n\n喂食机示例：{feed_count, feed_portion_weight, capacity_kg, feed_type, timezone, network_type, group_id}\n\n摄像头示例：{quality, resolution, fps, codec, stream_url, recording, night_vision, motion_detection}\n\n水泵示例：{power_kw, flow_rate_m3h, operating_hours}",
+            "example": {
+              "feed_count": 3,
+              "feed_portion_weight": 20.0,
+              "capacity_kg": 100.0,
+              "feed_type": "虾料A型"
+            }
+          },
+          "tags": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备标签（逗号分隔）",
+            "example": "重点监控,核心设备"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备描述",
+            "example": "用于监测一号池的溶解氧浓度"
+          }
+        }
+      },
+      "DeviceUpdateRequest": {
+        "type": "object",
+        "description": "更新设备请求体（支持部分更新）\n\n**只允许更新以下字段**：name, description, location, status, device_specific_config, connection_info, pond_id, control_mode",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "更新后的设备名称",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备描述",
+            "example": "更新后的设备描述"
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备安装位置",
+            "example": "更新后的设备位置"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": ["online", "offline"],
+            "example": "online"
+          },
+          "connection_info": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "example": {
+              "url": "http://192.168.1.100",
+              "username": "admin",
+              "password": "password"
+            }
+          },
+          "device_specific_config": {
+            "type": "object",
+            "nullable": true,
+            "description": "设备专属配置（JSON格式）",
+            "example": {
+              "sampling_rate": 60,
+              "alert_threshold": 5.0
+            }
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "养殖池ID",
+            "example": 1
+          },
+          "control_mode": {
+            "type": "string",
+            "description": "控制权限模式",
+            "enum": ["manual_only", "ai_only", "hybrid"],
+            "example": "hybrid"
+          }
+        }
+      },
+      "SensorTypeListItem": {
+        "type": "object",
+        "description": "传感器类型列表项（轻量）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "传感器类型ID",
+            "example": 1
+          },
+          "type_name": {
+            "type": "string",
+            "description": "传感器类型名称",
+            "example": "溶解氧传感器"
+          }
+        }
+      },
+      "DeviceConnectionTestRequest": {
+        "type": "object",
+        "description": "设备连接测试请求体",
+        "required": ["category", "connection_info"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "设备类别（当前支持：feeder）",
+            "enum": ["feeder"],
+            "example": "feeder"
+          },
+          "connection_info": {
+            "type": "object",
+            "description": "连接信息，不同设备类型字段不同。\n\n**喂食机 (feeder)**:\n- `base_url`: API地址（必填）\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeederConnectionInfo"
+              }
+            ]
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "超时时间（秒），默认15秒，范围1-120",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 15,
+            "example": 15
+          }
+        }
+      },
+      "FeederConnectionInfo": {
+        "type": "object",
+        "description": "喂食机连接信息",
+        "required": ["base_url", "user_id", "password"],
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "API地址",
+            "example": "https://ffish.huaeran.cn:8081/commonRequest"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "用户名",
+            "example": "admin"
+          },
+          "password": {
+            "type": "string",
+            "description": "密码",
+            "example": "123456"
+          }
+        }
+      },
+      "DeviceConnectionTestResponse": {
+        "type": "object",
+        "description": "设备连接测试响应",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "连接是否成功",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "测试结果消息",
+            "example": "✅ 连接测试成功，设备可以正常连接"
+          },
+          "details": {
+            "type": "object",
+            "description": "详细信息（成功时包含设备返回信息，失败时包含错误信息）",
+            "properties": {
+              "authkey": {
+                "type": "string",
+                "description": "认证密钥（仅喂食机成功时返回，只显示前10位）",
+                "example": "abc123def4..."
+              },
+              "response_status": {
+                "type": "integer",
+                "description": "设备响应状态码",
+                "example": 1
+              },
+              "error": {
+                "type": "string",
+                "description": "错误信息（失败时返回）",
+                "example": "用户名或密码错误"
+              },
+              "timeout": {
+                "type": "integer",
+                "description": "超时时间（超时时返回）",
+                "example": 15
+              }
+            }
+          }
+        }
+      },
+      "SensorType": {
+        "type": "object",
+        "description": "传感器类型详细信息（对应sensor_types表）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "传感器类型ID",
+            "example": 1
+          },
+          "type_name": {
+            "type": "string",
+            "description": "传感器类型名称",
+            "example": "溶解氧饱和度传感器"
+          },
+          "metric": {
+            "type": "string",
+            "description": "测量指标标识符",
+            "example": "do"
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位",
+            "example": "mg/L"
+          },
+          "valid_min": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "有效值下限（用于异常检测）",
+            "example": 3.0
+          },
+          "valid_max": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "有效值上限（用于异常检测）",
+            "example": 15.0
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "传感器类型描述",
+            "example": "测量水体溶解氧含量"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 400
+                },
+                "message": {
+                  "type": "string",
+                  "example": "请求参数错误"
+                },
+                "data": {
+                  "type": "object",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 404
+                },
+                "message": {
+                  "type": "string",
+                  "example": "设备不存在或已删除"
+                },
+                "data": {
+                  "type": "object",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "服务器内部错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 500
+                },
+                "message": {
+                  "type": "string",
+                  "example": "服务器内部错误"
+                },
+                "data": {
+                  "type": "object",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

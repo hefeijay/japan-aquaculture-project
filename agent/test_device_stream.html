@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备控制流式测试页面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .input-group input,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f44336;
+            color: white;
+            margin-left: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #d32f2f;
+        }
+
+        .btn-clear {
+            background: #ff9800;
+            color: white;
+            margin-left: 10px;
+        }
+
+        .btn-clear:hover {
+            background: #f57c00;
+        }
+
+        .status-bar {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-bar.idle {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-bar.connecting {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .status-bar.streaming {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .status-bar.error {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        .status-bar.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .events-container {
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .event-item {
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .event-item.event-start {
+            border-left-color: #4caf50;
+        }
+
+        .event-item.event-node_update {
+            border-left-color: #2196f3;
+        }
+
+        .event-item.event-message {
+            border-left-color: #9c27b0;
+        }
+
+        .event-item.event-tool_call {
+            border-left-color: #ff9800;
+        }
+
+        .event-item.event-tool_result {
+            border-left-color: #ff5722;
+        }
+
+        .event-item.event-execution_step {
+            border-left-color: #00bcd4;
+        }
+
+        .event-item.event-operation_record {
+            border-left-color: #e91e63;
+            background: #fff8f8;
+        }
+
+        .event-item.event-done {
+            border-left-color: #4caf50;
+            background: #f1f8f4;
+        }
+
+        .event-item.event-error {
+            border-left-color: #f44336;
+            background: #fff5f5;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: #667eea;
+            color: white;
+        }
+
+        .event-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .event-content {
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .event-content pre {
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .summary-panel {
+            grid-column: 1 / -1;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .summary-card h3 {
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .summary-card .value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .operation-record-detail {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .operation-record-detail h4 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .record-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .record-item:last-child {
+            border-bottom: none;
+        }
+
+        .record-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .record-value {
+            color: #333;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .badge-error {
+            background: #f44336;
+            color: white;
+        }
+
+        .badge-info {
+            background: #2196f3;
+            color: white;
+        }
+
+        .tool-calls-list,
+        .steps-list {
+            margin-top: 10px;
+        }
+
+        .tool-call-item,
+        .step-item {
+            background: #fff;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="header">
+            <h1>🤖 设备控制流式测试页面</h1>
+            <p>测试设备专家 SSE 流式返回功能，包括操作记录、工具调用、执行步骤等完整信息</p>
+        </div>
+
+        <!-- 主要网格布局 -->
+        <div class="main-grid">
+            <!-- 左侧：请求面板 -->
+            <div class="panel">
+                <h2>📝 发送请求</h2>
+                
+                <div class="input-group">
+                    <label>API 地址</label>
+                    <input type="text" id="apiUrl" value="http://localhost:8000/api/v1/chat/stream" placeholder="SSE 流式接口地址">
+                </div>
+
+                <div class="input-group">
+                    <label>会话 ID</label>
+                    <input type="text" id="sessionId" value="test_session_001" placeholder="会话ID">
+                </div>
+
+                <div class="input-group">
+                    <label>设备控制请求</label>
+                    <textarea id="query" placeholder="例如：启动一号池投喂机">启动一号池投喂机</textarea>
+                </div>
+
+                <div class="input-group">
+                    <label>上下文信息 (JSON)</label>
+                    <textarea id="context" placeholder='{"user_id": 1, "pond_id": 1}'>{"user_id": 1, "pond_id": 1}</textarea>
+                </div>
+
+                <div>
+                    <button class="btn btn-primary" id="sendBtn">
+                        🚀 发送请求
+                    </button>
+                    <button class="btn btn-secondary" id="stopBtn" disabled>
+                        ⏹️ 停止
+                    </button>
+                    <button class="btn btn-clear" id="clearBtn">
+                        🗑️ 清空事件
+                    </button>
+                </div>
+
+                <!-- 状态栏 -->
+                <div id="statusBar" class="status-bar idle">
+                    <span>⏸️ 空闲中</span>
+                </div>
+            </div>
+
+            <!-- 右侧：统计面板 -->
+            <div class="panel">
+                <h2>📊 实时统计</h2>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <h3>接收事件数</h3>
+                        <div class="value" id="eventCount">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>工具调用数</h3>
+                        <div class="value" id="toolCallCount">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>执行步骤数</h3>
+                        <div class="value" id="stepCount">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>耗时 (秒)</h3>
+                        <div class="value" id="duration">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 事件流面板 -->
+        <div class="panel">
+            <h2>📡 事件流 (实时)</h2>
+            <div id="eventsContainer" class="events-container">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <p>等待发送请求...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最终结果面板 -->
+        <div class="panel summary-panel" id="resultPanel" style="display: none;">
+            <h2>✅ 最终结果</h2>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let eventCount = 0;
+        let toolCallCount = 0;
+        let stepCount = 0;
+        let startTime = null;
+        let durationInterval = null;
+
+        const elements = {
+            sendBtn: document.getElementById('sendBtn'),
+            stopBtn: document.getElementById('stopBtn'),
+            clearBtn: document.getElementById('clearBtn'),
+            statusBar: document.getElementById('statusBar'),
+            eventsContainer: document.getElementById('eventsContainer'),
+            resultPanel: document.getElementById('resultPanel'),
+            resultContent: document.getElementById('resultContent'),
+            eventCountEl: document.getElementById('eventCount'),
+            toolCallCountEl: document.getElementById('toolCallCount'),
+            stepCountEl: document.getElementById('stepCount'),
+            durationEl: document.getElementById('duration'),
+        };
+
+        // 发送请求
+        elements.sendBtn.addEventListener('click', startStream);
+        elements.stopBtn.addEventListener('click', stopStream);
+        elements.clearBtn.addEventListener('click', clearEvents);
+
+        function startStream() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const sessionId = document.getElementById('sessionId').value;
+            const query = document.getElementById('query').value;
+            const contextStr = document.getElementById('context').value;
+
+            if (!query.trim()) {
+                alert('请输入设备控制请求');
+                return;
+            }
+
+            // 解析上下文
+            let context = {};
+            try {
+                if (contextStr.trim()) {
+                    context = JSON.parse(contextStr);
+                }
+            } catch (e) {
+                alert('上下文信息格式错误，请输入有效的 JSON');
+                return;
+            }
+
+            // 重置状态
+            clearEvents();
+            elements.resultPanel.style.display = 'none';
+            
+            // 构建请求 URL
+            const params = new URLSearchParams({
+                session_id: sessionId,
+                query: query,
+                context: JSON.stringify(context)
+            });
+
+            const url = `${apiUrl}?${params.toString()}`;
+
+            // 更新 UI
+            elements.sendBtn.disabled = true;
+            elements.stopBtn.disabled = false;
+            updateStatus('connecting', '⏳ 连接中...');
+
+            // 启动计时
+            startTime = Date.now();
+            durationInterval = setInterval(updateDuration, 100);
+
+            // 创建 EventSource
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                updateStatus('streaming', '📡 接收中...');
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleEvent(data);
+                } catch (e) {
+                    console.error('解析事件失败:', e, event.data);
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource 错误:', error);
+                updateStatus('error', '❌ 连接错误');
+                stopStream();
+            };
+        }
+
+        function stopStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            if (durationInterval) {
+                clearInterval(durationInterval);
+                durationInterval = null;
+            }
+
+            elements.sendBtn.disabled = false;
+            elements.stopBtn.disabled = true;
+            updateStatus('idle', '⏸️ 已停止');
+        }
+
+        function clearEvents() {
+            elements.eventsContainer.innerHTML = '<div class="empty-state"><p>等待发送请求...</p></div>';
+            eventCount = 0;
+            toolCallCount = 0;
+            stepCount = 0;
+            updateCounters();
+        }
+
+        function handleEvent(event) {
+            const eventType = event.type;
+            eventCount++;
+            updateCounters();
+
+            // 移除空状态
+            const emptyState = elements.eventsContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            // 创建事件项
+            const eventItem = document.createElement('div');
+            eventItem.className = `event-item event-${eventType}`;
+
+            const eventHeader = document.createElement('div');
+            eventHeader.className = 'event-header';
+
+            const eventTypeEl = document.createElement('span');
+            eventTypeEl.className = 'event-type';
+            eventTypeEl.textContent = eventType;
+
+            const eventTime = document.createElement('span');
+            eventTime.className = 'event-time';
+            eventTime.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+
+            eventHeader.appendChild(eventTypeEl);
+            eventHeader.appendChild(eventTime);
+
+            const eventContent = document.createElement('div');
+            eventContent.className = 'event-content';
+
+            // 根据事件类型渲染内容
+            switch (eventType) {
+                case 'start':
+                    eventContent.innerHTML = `
+                        <div><strong>会话ID:</strong> ${event.session_id}</div>
+                        <div><strong>请求:</strong> ${event.query}</div>
+                    `;
+                    break;
+
+                case 'node_update':
+                    eventContent.innerHTML = `
+                        <div>📍 切换到节点: <strong>${event.node}</strong></div>
+                        ${event.node_description ? `<div>${event.node_description}</div>` : ''}
+                    `;
+                    break;
+
+                case 'message':
+                    eventContent.innerHTML = `
+                        <div>💬 ${event.content || ''}</div>
+                    `;
+                    break;
+
+                case 'tool_call':
+                    toolCallCount++;
+                    updateCounters();
+                    eventContent.innerHTML = `
+                        <div><strong>🔧 工具:</strong> ${event.tool}</div>
+                        <div><strong>动作:</strong> ${event.action}</div>
+                        ${event.parameters ? `<pre>${JSON.stringify(event.parameters, null, 2)}</pre>` : ''}
+                    `;
+                    break;
+
+                case 'tool_result':
+                    eventContent.innerHTML = `
+                        <div><strong>✅ 结果:</strong></div>
+                        <pre>${JSON.stringify(event.result, null, 2)}</pre>
+                        ${event.duration_ms ? `<div>⏱️ 耗时: ${event.duration_ms}ms</div>` : ''}
+                    `;
+                    break;
+
+                case 'execution_step':
+                    stepCount++;
+                    updateCounters();
+                    eventContent.innerHTML = `
+                        <div>📝 ${event.step}</div>
+                    `;
+                    break;
+
+                case 'operation_record':
+                    const record = event.record;
+                    eventContent.innerHTML = `
+                        <div class="operation-record-detail">
+                            <h4>📋 操作记录详情</h4>
+                            <div class="record-item">
+                                <span class="record-label">操作ID:</span>
+                                <span class="record-value">${record.operation_id || '-'}</span>
+                            </div>
+                            <div class="record-item">
+                                <span class="record-label">操作类型:</span>
+                                <span class="record-value">${record.action_type || '-'}</span>
+                            </div>
+                            <div class="record-item">
+                                <span class="record-label">用户:</span>
+                                <span class="record-value">${record.username || 'ID: ' + record.user_id}</span>
+                            </div>
+                            <div class="record-item">
+                                <span class="record-label">设备:</span>
+                                <span class="record-value">${record.device_name || record.device_id || '-'}</span>
+                            </div>
+                            <div class="record-item">
+                                <span class="record-label">执行结果:</span>
+                                <span class="record-value">
+                                    <span class="badge ${record.execution_result === 'success' ? 'badge-success' : 'badge-error'}">
+                                        ${record.execution_result || '-'}
+                                    </span>
+                                </span>
+                            </div>
+                            ${record.parameters ? `
+                            <div class="record-item">
+                                <span class="record-label">参数:</span>
+                                <span class="record-value"><pre>${JSON.stringify(record.parameters, null, 2)}</pre></span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    `;
+                    break;
+
+                case 'done':
+                    stopStream();
+                    const statusClass = event.success ? 'success' : 'error';
+                    const statusIcon = event.success ? '✅' : '❌';
+                    const statusText = event.success ? '成功' : '失败';
+                    
+                    updateStatus(statusClass, `${statusIcon} ${statusText}`);
+                    
+                    eventContent.innerHTML = `
+                        <div><strong>状态:</strong> 
+                            <span class="badge ${event.success ? 'badge-success' : 'badge-error'}">
+                                ${statusText}
+                            </span>
+                        </div>
+                        ${event.result ? `<div><strong>结果:</strong> ${event.result.summary || event.result}</div>` : ''}
+                        ${event.error ? `<div style="color: #f44336;"><strong>错误:</strong> ${event.error}</div>` : ''}
+                        ${event.device_type ? `<div><strong>设备类型:</strong> ${event.device_type}</div>` : ''}
+                    `;
+
+                    // 显示完整结果面板
+                    showFinalResult(event);
+                    break;
+
+                case 'error':
+                    stopStream();
+                    updateStatus('error', '❌ 错误');
+                    eventContent.innerHTML = `
+                        <div style="color: #f44336;">❌ ${event.error}</div>
+                        ${event.error_code ? `<div>错误码: ${event.error_code}</div>` : ''}
+                    `;
+                    break;
+
+                default:
+                    eventContent.innerHTML = `<pre>${JSON.stringify(event, null, 2)}</pre>`;
+            }
+
+            eventItem.appendChild(eventHeader);
+            eventItem.appendChild(eventContent);
+            elements.eventsContainer.appendChild(eventItem);
+
+            // 自动滚动到底部
+            elements.eventsContainer.scrollTop = elements.eventsContainer.scrollHeight;
+        }
+
+        function showFinalResult(doneEvent) {
+            elements.resultPanel.style.display = 'block';
+
+            let html = `
+                <div class="operation-record-detail">
+                    <h3>执行结果</h3>
+                    <div class="record-item">
+                        <span class="record-label">状态:</span>
+                        <span class="record-value">
+                            <span class="badge ${doneEvent.success ? 'badge-success' : 'badge-error'}">
+                                ${doneEvent.success ? '成功' : '失败'}
+                            </span>
+                        </span>
+                    </div>
+                    ${doneEvent.device_type ? `
+                    <div class="record-item">
+                        <span class="record-label">设备类型:</span>
+                        <span class="record-value">${doneEvent.device_type}</span>
+                    </div>
+                    ` : ''}
+                    ${doneEvent.error ? `
+                    <div class="record-item">
+                        <span class="record-label">错误信息:</span>
+                        <span class="record-value" style="color: #f44336;">${doneEvent.error}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+
+            // 操作记录
+            if (doneEvent.operation_record) {
+                const record = doneEvent.operation_record;
+                html += `
+                    <div class="operation-record-detail" style="margin-top: 20px;">
+                        <h3>📋 操作记录</h3>
+                        <div class="record-item">
+                            <span class="record-label">操作ID:</span>
+                            <span class="record-value">${record.operation_id || '-'}</span>
+                        </div>
+                        <div class="record-item">
+                            <span class="record-label">操作类型:</span>
+                            <span class="record-value">${record.action_type || '-'}</span>
+                        </div>
+                        <div class="record-item">
+                            <span class="record-label">执行结果:</span>
+                            <span class="record-value">
+                                <span class="badge ${record.execution_result === 'success' ? 'badge-success' : 'badge-error'}">
+                                    ${record.execution_result || '-'}
+                                </span>
+                            </span>
+                        </div>
+                        ${record.timestamp ? `
+                        <div class="record-item">
+                            <span class="record-label">时间戳:</span>
+                            <span class="record-value">${new Date(record.timestamp).toLocaleString('zh-CN')}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // 工具调用
+            if (doneEvent.tool_calls && doneEvent.tool_calls.length > 0) {
+                html += `
+                    <div style="margin-top: 20px;">
+                        <h3>🔧 工具调用 (${doneEvent.tool_calls.length})</h3>
+                        <div class="tool-calls-list">
+                            ${doneEvent.tool_calls.map(call => `
+                                <div class="tool-call-item">
+                                    <div><strong>${call.tool}</strong> - ${call.action}</div>
+                                    ${call.duration_ms ? `<div style="font-size: 12px; color: #666;">⏱️ ${call.duration_ms}ms</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 执行步骤
+            if (doneEvent.execution_steps && doneEvent.execution_steps.length > 0) {
+                html += `
+                    <div style="margin-top: 20px;">
+                        <h3>📝 执行步骤 (${doneEvent.execution_steps.length})</h3>
+                        <div class="steps-list">
+                            ${doneEvent.execution_steps.map(step => `
+                                <div class="step-item">${step}</div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            elements.resultContent.innerHTML = html;
+
+            // 滚动到结果面板
+            elements.resultPanel.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateStatus(status, text) {
+            elements.statusBar.className = `status-bar ${status}`;
+            
+            if (status === 'connecting' || status === 'streaming') {
+                elements.statusBar.innerHTML = `<div class="spinner"></div><span>${text}</span>`;
+            } else {
+                elements.statusBar.innerHTML = `<span>${text}</span>`;
+            }
+        }
+
+        function updateCounters() {
+            elements.eventCountEl.textContent = eventCount;
+            elements.toolCallCountEl.textContent = toolCallCount;
+            elements.stepCountEl.textContent = stepCount;
+        }
+
+        function updateDuration() {
+            if (startTime) {
+                const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+                elements.durationEl.textContent = duration;
+            }
+        }
+    </script>
+</body>
+</html>
+
