@@ -195,7 +195,7 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
         'DATABASE_URL',
-        _MYSQL_ENV_URI or 'mysql+pymysql://root:123456@rm-0iwx9y9q368yc877wbo.mysql.japan.rds.aliyuncs.com:3306/japan_aquaculture'
+        _MYSQL_ENV_URI
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 

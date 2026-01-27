@@ -44,33 +44,35 @@ async def recognize_intent(
         # 加载意图识别提示词
         system_prompt = load_prompt("intent")
         
-        # 构建消息
+        # ⚠️ 构建消息 - 意图识别不传入历史对话，避免 LLM 误以为需要对话
         messages = format_messages(
             system_prompt=system_prompt,
             user_message=query,
-            history=history,
+            history=None,  # 意图识别只基于当前输入
         )
         
         # 调用 LLM（意图识别使用较低温度）
         response = await llm_manager.invoke(
             messages=messages,
-            temperature=0.3,
+            temperature=0.1,  # 降低温度，提高确定性
         )
         
         # 清洗响应
-        intent = response.strip().strip('"').strip("'")
+        intent = response.strip().strip('"').strip("'").strip("。").strip("，")
         
-        # 验证意图有效性
+        # 🔥 增强：从响应中提取有效意图（处理 LLM 返回完整句子的情况）
         if intent not in VALID_INTENTS:
-            logger.warning(f"无效意图: {intent} → 其他")
-            intent = "其他"
-        
-        # ⭐️ 安全验证：定时任务相关的强制归为设备控制
-        task_keywords = ["定时任务", "定时计划", "任务管理", "创建任务", "查看任务", "修改任务", "取消任务", "任务列表", "喂食计划"]
-        if any(kw in query for kw in task_keywords):
-            if intent != "设备控制":
-                logger.info(f"意图修正: {intent} → 设备控制")
-                intent = "设备控制"
+            # 尝试从响应中查找有效意图关键词
+            for valid_intent in VALID_INTENTS:
+                if valid_intent in intent:
+                    logger.info(f"从响应中提取意图: {response[:30]}... → {valid_intent}")
+                    intent = valid_intent
+                    break
+            
+            # 如果仍然无效，默认为"其他"
+            if intent not in VALID_INTENTS:
+                logger.warning(f"无效意图: {response[:50]}... → 其他")
+                intent = "其他"
         
         return intent, {"model": llm_manager.default_model}
         
