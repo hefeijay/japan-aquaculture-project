@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "anthropic/claude-sonnet-4.5"
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENAI_TIMEOUT: int = 300
     
     # ========== 服务配置 ==========
     HOST: str = "0.0.0.0"

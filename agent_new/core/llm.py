@@ -4,6 +4,7 @@
 LLM 管理器 - 统一管理 LLM 调用
 """
 import logging
+import httpx
 from typing import Dict, Any, List, Optional, Callable, Awaitable
 from openai import AsyncOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -20,9 +21,18 @@ class LLMManager:
     
     def __init__(self):
         """初始化 LLM 管理器"""
+        # 配置超时：流式响应需要更长的 read 超时
+        timeout = httpx.Timeout(
+            connect=10.0,      # 连接超时：10 秒
+            read=settings.OPENAI_TIMEOUT,  # 读取超时：从配置读取（默认 300 秒）
+            write=10.0,         # 写入超时：10 秒
+            pool=5.0            # 连接池超时：5 秒
+        )
         self.client = AsyncOpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_BASE_URL,
+            timeout=timeout,  # 传入超时配置
+            max_retries=2,    # 添加重试次数（可选）
         )
         self.default_model = settings.OPENAI_MODEL
         self.default_temperature = settings.OPENAI_TEMPERATURE

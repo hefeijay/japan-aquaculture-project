@@ -11,7 +11,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from core.constants import MsgType
 from core.handler import chat_handler
-from services.chat_history_service import save_message, get_history, format_history_for_llm
+from services.chat_history_service import get_history, format_history_for_llm
 from services.session_service import initialize_session
 
 logger = logging.getLogger(__name__)
@@ -118,12 +118,10 @@ async def _handle_user_message(
         await _send_error(websocket, "消息格式错误：缺少 'message' 或 'content' 字段")
         return
     
-    # 保存用户消息
-    user_msg_data = save_message(
-        session_id=session_id,
-        role="user",
-        message=user_message,
-    )
+    # 生成用户消息的 message_id 和 timestamp（用于返回给前端）
+    # 注意：用户消息的保存由 chat_handler.process() 统一处理，这里不再重复保存
+    user_message_id = str(uuid.uuid4())
+    user_timestamp = int(datetime.now().timestamp())
     
     # 返回用户消息确认
     user_msg_type = msg_data.get("type", "text")
@@ -132,9 +130,9 @@ async def _handle_user_message(
         "data": {
             "session_id": session_id,
             "content": user_message,
-            "message_id": user_msg_data.get("message_id", ""),
+            "message_id": user_message_id,
             "role": "user",
-            "timestamp": user_msg_data.get("timestamp", int(datetime.now().timestamp())),
+            "timestamp": user_timestamp,
             "type": user_msg_type,
         }
     }
