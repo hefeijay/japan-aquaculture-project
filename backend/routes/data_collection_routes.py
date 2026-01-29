@@ -361,7 +361,7 @@ def receive_feeder_data():
     
     请求体格式：
     {
-        "feeder_id": "1",  // 必填，喂食机设备主键ID（字符串形式的整数，对应devices.id）
+        "feeder_id": "AI",  // 必填，喂食机设备分组ID（对应devices表device_specific_config字段中的group_id，如"AI"、"AI2"）
         "batch_id": "1",  // 可选，批次主键ID（字符串形式的整数，对应batches.id）
         "pool_id": "1",  // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id）
         "feed_amount_g": 500.0,
@@ -388,7 +388,7 @@ def receive_feeder_data():
             }), 400
         
         # 提取数据
-        feeder_id_str = str(data['feeder_id'])  # 喂食机设备主键ID（字符串）
+        feeder_group_id = str(data['feeder_id'])  # 喂食机分组ID（对应device_specific_config中的group_id）
         batch_id_str = data.get('batch_id')  # 批次主键ID（字符串）
         pond_id_str = data.get('pool_id')  # 养殖池主键ID（字符串）
         feed_amount_g = data.get('feed_amount_g')
@@ -397,15 +397,6 @@ def receive_feeder_data():
         leftover_estimate_g = data.get('leftover_estimate_g')
         timestamp = data.get('timestamp')
         notes = data.get('notes')
-        
-        # 将 feeder_id 转换为整数
-        try:
-            feeder_id = int(feeder_id_str)
-        except (ValueError, TypeError):
-            return jsonify({
-                "success": False,
-                "error": f"feeder_id 必须是有效的整数: {feeder_id_str}"
-            }), 400
         
         # 将 pool_id 转换为整数（如果提供了）
         pond_id = None
@@ -437,23 +428,25 @@ def receive_feeder_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 从统一设备表查找喂食机设备（通过主键ID查找，需验证设备类型为feeder）
+            # 从统一设备表查找喂食机设备（通过device_specific_config中的group_id查找）
             from db_models.device import Device, DeviceType
             from db_models.pond import Pond
             from db_models.batch import Batch
+            from sqlalchemy import func
             
-            # 通过主键ID查找设备，并验证是喂食机类型
+            # 通过device_specific_config中的group_id查找喂食机设备
+            # MySQL JSON函数：JSON_UNQUOTE(JSON_EXTRACT(device_specific_config, '$.group_id'))
             device = session.query(Device)\
                 .join(DeviceType, Device.device_type_id == DeviceType.id)\
-                .filter(Device.id == feeder_id)\
                 .filter(Device.is_deleted == False)\
                 .filter(DeviceType.category == 'feeder')\
+                .filter(func.json_unquote(func.json_extract(Device.device_specific_config, '$.group_id')) == feeder_group_id)\
                 .first()
             
             if not device:
                 return jsonify({
                     "success": False,
-                    "error": f"喂食机设备不存在或已删除: feeder_id={feeder_id}"
+                    "error": f"喂食机设备不存在或已删除: feeder_id(group_id)={feeder_group_id}"
                 }), 404
             
             # 初始化数据库ID变量
@@ -466,7 +459,7 @@ def receive_feeder_data():
                 if pond_db_id is None:
                     return jsonify({
                         "success": False,
-                        "error": f"喂食机设备未关联养殖池且请求中未提供 pool_id: feeder_id={feeder_id}"
+                        "error": f"喂食机设备未关联养殖池且请求中未提供 pool_id: feeder_id(group_id)={feeder_group_id}"
                     }), 400
             else:
                 # 如果提供了 pond_id（主键ID），验证养殖池是否存在
@@ -524,13 +517,14 @@ def receive_feeder_data():
             session.add(feeder_log)
             session.commit()
             
-            logger.info(f"喂食机数据接收成功: feeder_id={feeder_id} (device.id), feed_amount_g={feed_amount_g}, pond_id={pond_db_id}, batch_id={batch_db_id}")
+            logger.info(f"喂食机数据接收成功: feeder_id(group_id)={feeder_group_id}, device.id={device.id}, feed_amount_g={feed_amount_g}, pond_id={pond_db_id}, batch_id={batch_db_id}")
             
             return jsonify({
                 "success": True,
                 "data": {
                     "id": feeder_log.id,
-                    "feeder_id": feeder_id,  # 返回的还是输入的feeder_id（即device.id）
+                    "feeder_id": feeder_group_id,  # 返回输入的feeder_id（即group_id）
+                    "device_id": device.id,  # 返回实际的设备主键ID
                     "status": feeder_log.status
                 },
                 "timestamp": int(time.time() * 1000)
