@@ -38,7 +38,6 @@ class ShrimpStats(Base):
         Index("idx_ss_frame", "frame_id"),
         Index("idx_ss_ts", "ts_utc"),
         Index("idx_shrimp_stats_pond_ts", "pond_id", "ts_utc"),
-        Index("idx_ss_batch_ts", "batch_id", "ts_utc"),
         Index("idx_id_modelver", "model_name", "model_version"),
     )
 
@@ -56,14 +55,6 @@ class ShrimpStats(Base):
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("camera_images.id"),
         comment="图像帧ID（FK -> camera_images）",
-        init=False
-    )
-    
-    # 批次ID（FK）
-    batch_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("batches.id"),
-        comment="批次ID（FK，关联到batches.id主键）",
         init=False
     )
     
@@ -231,5 +222,4 @@ class ShrimpStats(Base):
     
     # ORM 关系
     frame: Mapped[Optional["CameraImage"]] = relationship(init=False)
-    batch: Mapped[Optional["Batch"]] = relationship(init=False)
     pond: Mapped["Pond"] = relationship(back_populates="shrimp_stats", init=False)
