@@ -139,7 +139,7 @@ def receive_sensor_data():
     """
     try:
         data = request.get_json()
-        print(f"data: {data}")
+        logger.debug(f"接收传感器数据: {data}")
         if not data:
             return jsonify({
                 "success": False,
@@ -221,28 +221,21 @@ def receive_sensor_data():
                 }), 404
             
             # 初始化数据库ID变量
-            pond_db_id = None
             batch_db_id = None
             
-            # 获取 pond_id（如果请求中没有提供，从 device 获取）
-            if pond_id is None:
-                pond_db_id = device.pond_id
-                if pond_db_id is None:
-                    return jsonify({
-                        "success": False,
-                        "error": f"传感器设备未关联养殖池且请求中未提供 pool_id: sensor_id={sensor_id}"
-                    }), 400
-            else:
-                # 如果提供了 pond_id（主键ID），验证养殖池是否存在
-                pond = session.query(Pond).filter(Pond.id == pond_id).first()
-                if not pond:
-                    return jsonify({
-                        "success": False,
-                        "error": f"养殖池不存在: pool_id={pond_id}"
-                    }), 404
-                pond_db_id = pond.id  # 使用主键ID
+            # 始终使用 device.pond_id 作为最终的 pond_id
+            pond_db_id = device.pond_id
+            if pond_db_id is None:
+                return jsonify({
+                    "success": False,
+                    "error": f"传感器设备未关联养殖池: sensor_id={sensor_id}"
+                }), 400
             
-            # 如果提供了 batch_id（主键ID），验证批次是否存在
+            # 如果用户提供了 pool_id，与 device.pond_id 比较，不一致则记录日志
+            if pond_id is not None and pond_id != device.pond_id:
+                logger.warning(f"用户提供的 pool_id={pond_id} 与设备关联的 pond_id={device.pond_id} 不一致，将使用设备的 pond_id={device.pond_id}")
+            
+            # 如果提供了 batch_id（主键ID），验证批次是否存在，并检查 pond_id 是否一致
             if batch_id is not None:
                 batch = session.query(Batch).filter(Batch.id == batch_id).first()
                 if not batch:
@@ -251,6 +244,9 @@ def receive_sensor_data():
                         "error": f"批次不存在: batch_id={batch_id}"
                     }), 404
                 batch_db_id = batch.id
+                # 检查批次的 pond_id 与设备的 pond_id 是否一致
+                if batch.pond_id != device.pond_id:
+                    logger.warning(f"批次 batch_id={batch_id} 的 pond_id={batch.pond_id} 与设备关联的 pond_id={device.pond_id} 不一致")
             
             # ===== 从 sensor_type 获取类型信息（用于快照字段）=====
             sensor_metric = None
