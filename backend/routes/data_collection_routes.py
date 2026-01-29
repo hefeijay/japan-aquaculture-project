@@ -1035,7 +1035,7 @@ def receive_shrimp_stats_data():
         
         # 从请求中提取数据
         uuid_str = data.get('uuid')
-        pond_id = data.get('pond_id', '4')
+        pond_id_str = data.get('pond_id', '4')
         input_subdir = data.get('input_subdir', '')
         output_dir = data.get('output_dir', '')
         created_at_source_iso = data.get('created_at', '')
@@ -1046,6 +1046,15 @@ def receive_shrimp_stats_data():
         batch_id = data.get('batch_id')
         camera_id = data.get('camera_id')
         frame_id = data.get('frame_id')
+        
+        # 转换 pond_id 为整数（数据库要求）
+        try:
+            pond_id = int(pond_id_str)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": f"pond_id 必须是有效的整数: {pond_id_str}"
+            }), 400
         
         # 提取尺寸和重量统计
         size_cm = data.get('size_cm', {})
@@ -1198,7 +1207,16 @@ def receive_batch_images():
             except (ValueError, TypeError):
                 batch_id = None
         
-        pool_id = request.form.get('pool_id', '4')
+        pool_id_str = request.form.get('pool_id', '4')
+        
+        # 转换 pool_id 为整数（数据库要求）
+        try:
+            pool_id = int(pool_id_str)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": f"pool_id 必须是有效的整数: {pool_id_str}"
+            }), 400
         
         conf = request.form.get('conf')
         if conf:
@@ -1326,7 +1344,7 @@ def receive_batch_images():
             # 添加元数据
             stats['camera_id'] = camera_id
             stats['batch_id'] = batch_id
-            stats['pool_id'] = pool_id
+            stats['pool_id'] = pool_id  # 已经是整数
             stats['input_subdir'] = input_subdir
             stats['output_dir'] = yolo_output_dir if save_results else ""
             

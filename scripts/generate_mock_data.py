@@ -30,65 +30,88 @@ from db_models import (
 )
 
 
-# 7种传感器类型配置
+# 8种传感器类型配置（匹配数据库表结构）
 SENSOR_TYPES_CONFIG = [
     {
-        "type_name": "溶解氧传感器",
+        "type_name": "dissolved_oxygen_aturation",
         "metric": "do",
         "unit": "mg/L",
-        "valid_min": 0.0,
-        "valid_max": 20.0,
-        "description": "测量水中溶解氧含量"
+        "valid_min": 3.0,
+        "valid_max": 15.0,
+        "description": "溶解氧饱和度"
     },
     {
-        "type_name": "pH值传感器",
-        "metric": "ph",
+        "type_name": "liquid_level",
+        "metric": "water_level",
+        "unit": "mm",
+        "valid_min": 0.5,
+        "valid_max": 5.0,
+        "description": "液位"
+    },
+    {
+        "type_name": "PH",
+        "metric": "PH",
         "unit": "pH",
-        "valid_min": 0.0,
-        "valid_max": 14.0,
-        "description": "测量水体的酸碱度"
+        "valid_min": 6.0,
+        "valid_max": 9.0,
+        "description": "PH"
     },
     {
-        "type_name": "温度传感器",
+        "type_name": "temperature",
         "metric": "temperature",
         "unit": "°C",
-        "valid_min": 0.0,
-        "valid_max": 50.0,
-        "description": "测量水温"
+        "valid_min": 15.0,
+        "valid_max": 35.0,
+        "description": "温度"
     },
     {
-        "type_name": "浊度传感器",
+        "type_name": "turbidity",
         "metric": "turbidity",
         "unit": "NTU",
         "valid_min": 0.0,
         "valid_max": 100.0,
-        "description": "测量水体浊度"
+        "description": "浊度"
     },
     {
-        "type_name": "液位传感器",
-        "metric": "water_level",
-        "unit": "mm",
-        "valid_min": 0.0,
-        "valid_max": 5000.0,
-        "description": "测量水位高度"
-    },
-    {
-        "type_name": "氨氮传感器",
+        "type_name": "ammonia",
         "metric": "ammonia",
         "unit": "mg/L",
         "valid_min": 0.0,
-        "valid_max": 10.0,
-        "description": "测量水中氨氮含量"
+        "valid_max": 2.0,
+        "description": "氨氮浓度"
     },
     {
-        "type_name": "亚硝酸盐传感器",
+        "type_name": "nitrite",
         "metric": "nitrite",
         "unit": "mg/L",
         "valid_min": 0.0,
-        "valid_max": 5.0,
-        "description": "测量水中亚硝酸盐含量"
+        "valid_max": 0.5,
+        "description": "亚硝酸盐浓度"
+    },
+    {
+        "type_name": "circulation",
+        "metric": "circulation",
+        "unit": "unknown",
+        "valid_min": 0.0,
+        "valid_max": 100.0,
+        "description": "Auto-created sensor type for circulation"
     }
 ]
+
+# 需要创建设备的传感器类型（只创建5个设备）
+SENSOR_DEVICE_METRICS = ["do", "water_level", "PH", "temperature", "turbidity"]
+
+# 传感器设备中文名称映射
+SENSOR_DEVICE_NAMES = {
+    "do": "溶解氧传感器",
+    "water_level": "液位传感器",
+    "PH": "PH传感器",
+    "temperature": "温度传感器",
+    "turbidity": "浊度传感器",
+    "ammonia": "氨氮传感器",
+    "nitrite": "亚硝酸盐传感器",
+    "circulation": "循环传感器"
+}
 
 # 设备类型配置
 DEVICE_TYPES_CONFIG = [
@@ -174,36 +197,41 @@ def generate_device_specific_config(category: str, device_counter: int) -> dict:
 def generate_sensor_value(metric: str, base_time: datetime) -> float:
     """根据传感器类型生成合理的读数值"""
     hour = base_time.hour
+    metric_lower = metric.lower()  # 统一转小写处理
     
-    if metric == "do":
+    if metric_lower == "do":
         # 溶解氧：白天高，夜间低，范围5-12 mg/L
         base = 8.5 + 2.5 * (1 if 6 <= hour <= 18 else -1) * 0.5
         return round(base + random.uniform(-1.0, 1.0), 2)
     
-    elif metric == "ph":
+    elif metric_lower == "ph":
         # pH值：相对稳定，范围7.0-8.5
         return round(7.5 + random.uniform(-0.3, 0.8), 2)
     
-    elif metric == "temperature":
+    elif metric_lower == "temperature":
         # 温度：白天高，夜间低，范围22-28°C
         base = 25.0 + 2.0 * (1 if 10 <= hour <= 16 else -1) * 0.3
         return round(base + random.uniform(-1.0, 1.0), 2)
     
-    elif metric == "turbidity":
+    elif metric_lower == "turbidity":
         # 浊度：范围0-30 NTU
         return round(random.uniform(2.0, 25.0), 2)
     
-    elif metric == "water_level":
+    elif metric_lower == "water_level":
         # 液位：范围1500-3000 mm
         return round(random.uniform(1800.0, 2800.0), 2)
     
-    elif metric == "ammonia":
+    elif metric_lower == "ammonia":
         # 氨氮：范围0-0.5 mg/L
         return round(random.uniform(0.05, 0.35), 3)
     
-    elif metric == "nitrite":
+    elif metric_lower == "nitrite":
         # 亚硝酸盐：范围0-0.1 mg/L
         return round(random.uniform(0.01, 0.08), 3)
+    
+    elif metric_lower == "circulation":
+        # 循环：范围0-100
+        return round(random.uniform(0.0, 100.0), 2)
     
     else:
         return round(random.uniform(0.0, 100.0), 2)
@@ -266,7 +294,7 @@ def generate_mock_data():
         # 3. 创建养殖池
         print("\n[3/8] 创建养殖池...")
         ponds = []
-        pond_names = ["1号池", "2号池", "3号池", "4号池", "5号池"]
+        pond_names = ["1号池", "2号池", "3号池", "4号池"]
         for i, name in enumerate(pond_names, 1):
             existing = db.session.query(Pond).filter_by(pond_id=f"POND_{i:03d}").first()
             if existing:
@@ -291,35 +319,39 @@ def generate_mock_data():
         # 4. 创建批次
         print("\n[4/8] 创建批次...")
         batches = []
-        for i, pond in enumerate(ponds, 1):
-            # 每个池创建1-2个批次
-            for j in range(1, 3):
-                batch_id = f"BATCH_2024_{i:02d}_{j}"
-                existing = db.session.query(Batch).filter_by(batch_id=batch_id).first()
-                if existing:
-                    batches.append(existing)
-                    print(f"  ✓ 批次已存在: {batch_id}")
+        # 只创建2个批次
+        for j in range(1, 3):
+            batch_id = f"BATCH_2024_{j:02d}"
+            existing = db.session.query(Batch).filter_by(batch_id=batch_id).first()
+            if existing:
+                batches.append(existing)
+                print(f"  ✓ 批次已存在: {batch_id}")
+            else:
+                # 批次1关联到1号池，批次2关联到4号池
+                if j == 1:
+                    pond = ponds[0]  # 1号池
                 else:
-                    start_date = datetime.now().date() - timedelta(days=random.randint(30, 180))
-                    end_date = None if random.random() > 0.3 else (start_date + timedelta(days=random.randint(60, 120)))
-                    
-                    # 创建对象，只传递可以在构造函数中使用的字段
-                    batch = Batch(
-                        batch_id=batch_id,
-                        pond_id=pond.id,
-                        start_date=start_date
-                    )
-                    # 设置其他字段（这些字段设置了 init=False）
-                    batch.species = "Litopenaeus vannamei"
-                    batch.end_date = end_date
-                    batch.location = f"车间A-{i}区"
-                    batch.seed_origin = "育苗场A"
-                    batch.stocking_density = Decimal(str(round(random.uniform(50.0, 150.0), 2)))
-                    
-                    db.session.add(batch)
-                    db.session.flush()
-                    batches.append(batch)
-                    print(f"  ✓ 创建批次: {batch_id}")
+                    pond = ponds[3]  # 4号池
+                start_date = datetime.now().date() - timedelta(days=random.randint(30, 180))
+                end_date = None if random.random() > 0.3 else (start_date + timedelta(days=random.randint(60, 120)))
+                
+                # 创建对象，只传递可以在构造函数中使用的字段
+                batch = Batch(
+                    batch_id=batch_id,
+                    pond_id=pond.id,
+                    start_date=start_date
+                )
+                # 设置其他字段（这些字段设置了 init=False）
+                batch.species = "Litopenaeus vannamei"
+                batch.end_date = end_date
+                batch.location = f"车间A-{j}区"
+                batch.seed_origin = "育苗场A"
+                batch.stocking_density = Decimal(str(round(random.uniform(50.0, 150.0), 2)))
+                
+                db.session.add(batch)
+                db.session.flush()
+                batches.append(batch)
+                print(f"  ✓ 创建批次: {batch_id}")
         
         db.session.commit()
         
@@ -331,69 +363,92 @@ def generate_mock_data():
         
         device_counter = 1
         
-        # 为每个池创建传感器设备（每种类型1-2个）
-        for pond in ponds:
-            for sensor_type in sensor_type_map.values():
-                if random.random() > 0.3:  # 70%概率创建该类型传感器
-                    device_id = f"sensor_{device_counter:04d}"
-                    existing = db.session.query(Device).filter_by(device_id=device_id).first()
-                    if existing:
-                        if existing.device_type.category == "sensor":
-                            sensor_devices.append(existing)
-                    else:
-                        device = Device(
-                            device_id=device_id,
-                            name=f"{sensor_type.type_name}-{pond.name}",
-                            ownership="养殖场",
-                            device_type_id=device_type_map["sensor"].id,
-                            sensor_type_id=sensor_type.id,
-                            pond_id=pond.id,
-                            model=f"Model-{sensor_type.metric.upper()}",
-                            manufacturer="传感器制造公司",
-                            serial_number=f"SN-{device_counter:06d}",
-                            location=f"{pond.name}-{sensor_type.type_name}",
-                            status="online" if random.random() > 0.1 else "offline",
-                            control_mode="hybrid",
-                            connection_info=generate_connection_info(device_counter),
-                            device_specific_config=generate_device_specific_config("sensor", device_counter)
-                        )
-                        db.session.add(device)
-                        db.session.flush()
-                        sensor_devices.append(device)
-                        device_counter += 1
+        # 只创建5个传感器设备（指定类型），全部放在4号池
+        pond_4 = ponds[3]  # 4号池（索引为3）
+        for metric in SENSOR_DEVICE_METRICS:
+            sensor_type = sensor_type_map.get(metric)
+            if not sensor_type:
+                continue
+            # 使用中文名称作为设备名称
+            device_name = SENSOR_DEVICE_NAMES.get(metric, f"{sensor_type.type_name}传感器")
+            device_id = f"sensor_{device_counter:04d}"
+            existing = db.session.query(Device).filter_by(device_id=device_id).first()
+            if existing:
+                if existing.device_type.category == "sensor":
+                    sensor_devices.append(existing)
+            else:
+                device = Device(
+                    device_id=device_id,
+                    name=f"{device_name}-{pond_4.name}",
+                    ownership="养殖场",
+                    device_type_id=device_type_map["sensor"].id,
+                    sensor_type_id=sensor_type.id,
+                    pond_id=pond_4.id,
+                    model=f"Model-{sensor_type.metric.upper()}",
+                    manufacturer="传感器制造公司",
+                    serial_number=f"SN-{device_counter:06d}",
+                    location=f"{pond_4.name}-{device_name}",
+                    status="online",
+                    control_mode="hybrid",
+                    connection_info=generate_connection_info(device_counter),
+                    device_specific_config=generate_device_specific_config("sensor", device_counter)
+                )
+                db.session.add(device)
+                db.session.flush()
+                sensor_devices.append(device)
+                device_counter += 1
         
-        # 为每个池创建喂食机（1-2个）
-        for pond in ponds:
-            for i in range(1, random.randint(2, 3)):
-                device_id = f"feeder_{device_counter:04d}"
-                existing = db.session.query(Device).filter_by(device_id=device_id).first()
-                if existing:
-                    if existing.device_type.category == "feeder":
-                        feeder_devices.append(existing)
-                else:
-                    device = Device(
-                        device_id=device_id,
-                        name=f"自动喂食机-{pond.name}-{i}号",
-                        ownership="养殖场",
-                        device_type_id=device_type_map["feeder"].id,
-                        sensor_type_id=None,
-                        pond_id=pond.id,
-                        model="AutoFeeder-Pro",
-                        manufacturer="喂食机制造公司",
-                        serial_number=f"SN-FEED-{device_counter:06d}",
-                        location=f"{pond.name}-喂食区{i}",
-                        status="online" if random.random() > 0.1 else "offline",
-                        control_mode="hybrid",
-                        connection_info=generate_connection_info(device_counter),
-                        device_specific_config=generate_device_specific_config("feeder", device_counter)
-                    )
-                    db.session.add(device)
-                    db.session.flush()
-                    feeder_devices.append(device)
-                    device_counter += 1
+        # 只创建2个喂食机，group_id分别为AI和AI2
+        feeder_group_ids = ["AI", "AI2"]
+        feeder_connection_info = {
+            "url": "https://ffish.huaeran.cn:8081/commonRequest",
+            "password": "123456789",
+            "username": "8619034657726"
+        }
+        for i, group_id in enumerate(feeder_group_ids, 1):
+            device_id = f"feeder_{device_counter:04d}"
+            existing = db.session.query(Device).filter_by(device_id=device_id).first()
+            if existing:
+                if existing.device_type.category == "feeder":
+                    feeder_devices.append(existing)
+            else:
+                # 关联到4号池
+                pond = ponds[3]
+                
+                # 生成喂食机专属配置，覆盖group_id
+                feeder_config = {
+                    "feed_count": 1,  # 默认1份
+                    "timezone": 9,
+                    "network_type": random.choice([0, 1]),
+                    "group_id": group_id,  # 使用指定的group_id
+                    "feed_portion_weight": 17.0,  # 每份17克
+                    "capacity_kg": round(random.uniform(50.0, 200.0), 1),
+                    "feed_type": random.choice(["虾料A型", "虾料B型", "虾料C型", "通用饲料"])
+                }
+                
+                device = Device(
+                    device_id=device_id,
+                    name=f"自动喂食机-{pond.name}-{i}号",
+                    ownership="养殖场",
+                    device_type_id=device_type_map["feeder"].id,
+                    sensor_type_id=None,
+                    pond_id=pond.id,
+                    model="AutoFeeder-Pro",
+                    manufacturer="喂食机制造公司",
+                    serial_number=f"SN-FEED-{device_counter:06d}",
+                    location=f"{pond.name}-喂食区{i}",
+                    status="online" if random.random() > 0.1 else "offline",
+                    control_mode="hybrid",
+                    connection_info=feeder_connection_info,
+                    device_specific_config=feeder_config
+                )
+                db.session.add(device)
+                db.session.flush()
+                feeder_devices.append(device)
+                device_counter += 1
         
-        # 为每个池创建摄像头（1-2个）
-        for pond in ponds:
+        # 只为4号池创建摄像头（1-2个）
+        for pond in [ponds[3]]:
             for i in range(1, random.randint(2, 3)):
                 device_id = f"camera_{device_counter:04d}"
                 existing = db.session.query(Device).filter_by(device_id=device_id).first()
@@ -422,60 +477,60 @@ def generate_mock_data():
                     camera_devices.append(device)
                     device_counter += 1
         
-        # 为每个池创建其他设备类型（循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵）
+        # 只为4号池创建其他设备类型（循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵）
+        # 确保每个设备类型都至少创建一个设备
         other_devices = []
         other_device_categories = ["water_pump", "air_blower", "water_switch", "solar_heater_pump"]
         
-        for pond in ponds:
+        for pond in [ponds[3]]:
             for category in other_device_categories:
                 if category in device_type_map:
-                    # 每个池每种类型创建0-1个设备（50%概率）
-                    if random.random() > 0.5:
-                        device_id = f"{category}_{device_counter:04d}"
-                        existing = db.session.query(Device).filter_by(device_id=device_id).first()
-                        if existing:
-                            if existing.device_type.category == category:
-                                other_devices.append(existing)
-                        else:
-                            device_names = {
-                                "water_pump": "循环水泵",
-                                "air_blower": "鼓风机",
-                                "water_switch": "水龙头开关",
-                                "solar_heater_pump": "太阳能加热器循环泵"
-                            }
-                            device_models = {
-                                "water_pump": "WaterPump-2000",
-                                "air_blower": "AirBlower-1500",
-                                "water_switch": "WaterSwitch-Pro",
-                                "solar_heater_pump": "SolarPump-3000"
-                            }
-                            device_manufacturers = {
-                                "water_pump": "水泵制造公司",
-                                "air_blower": "鼓风机制造公司",
-                                "water_switch": "开关制造公司",
-                                "solar_heater_pump": "太阳能设备公司"
-                            }
-                            
-                            device = Device(
-                                device_id=device_id,
-                                name=f"{device_names[category]}-{pond.name}",
-                                ownership="养殖场",
-                                device_type_id=device_type_map[category].id,
-                                sensor_type_id=None,
-                                pond_id=pond.id,
-                                model=device_models[category],
-                                manufacturer=device_manufacturers[category],
-                                serial_number=f"SN-{category.upper()}-{device_counter:06d}",
-                                location=f"{pond.name}-{device_names[category]}",
-                                status="online" if random.random() > 0.1 else "offline",
-                                control_mode="hybrid",
-                                connection_info=generate_connection_info(device_counter),
-                                device_specific_config=generate_device_specific_config(category, device_counter)
-                            )
-                            db.session.add(device)
-                            db.session.flush()
-                            other_devices.append(device)
-                            device_counter += 1
+                    # 每个池每种类型创建1个设备（确保每个类型都有）
+                    device_id = f"{category}_{device_counter:04d}"
+                    existing = db.session.query(Device).filter_by(device_id=device_id).first()
+                    if existing:
+                        if existing.device_type.category == category:
+                            other_devices.append(existing)
+                    else:
+                        device_names = {
+                            "water_pump": "循环水泵",
+                            "air_blower": "鼓风机",
+                            "water_switch": "水龙头开关",
+                            "solar_heater_pump": "太阳能加热器循环泵"
+                        }
+                        device_models = {
+                            "water_pump": "WaterPump-2000",
+                            "air_blower": "AirBlower-1500",
+                            "water_switch": "WaterSwitch-Pro",
+                            "solar_heater_pump": "SolarPump-3000"
+                        }
+                        device_manufacturers = {
+                            "water_pump": "水泵制造公司",
+                            "air_blower": "鼓风机制造公司",
+                            "water_switch": "开关制造公司",
+                            "solar_heater_pump": "太阳能设备公司"
+                        }
+                        
+                        device = Device(
+                            device_id=device_id,
+                            name=f"{device_names[category]}-{pond.name}",
+                            ownership="养殖场",
+                            device_type_id=device_type_map[category].id,
+                            sensor_type_id=None,
+                            pond_id=pond.id,
+                            model=device_models[category],
+                            manufacturer=device_manufacturers[category],
+                            serial_number=f"SN-{category.upper()}-{device_counter:06d}",
+                            location=f"{pond.name}-{device_names[category]}",
+                            status="online" if random.random() > 0.1 else "offline",
+                            control_mode="hybrid",
+                            connection_info=generate_connection_info(device_counter),
+                            device_specific_config=generate_device_specific_config(category, device_counter)
+                        )
+                        db.session.add(device)
+                        db.session.flush()
+                        other_devices.append(device)
+                        device_counter += 1
         
         db.session.commit()
         print(f"  ✓ 创建传感器设备: {len(sensor_devices)} 个")

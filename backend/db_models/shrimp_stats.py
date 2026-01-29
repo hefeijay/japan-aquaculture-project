@@ -35,9 +35,8 @@ class ShrimpStats(Base):
     """
     __tablename__ = "shrimp_stats"
     __table_args__ = (
-        Index("idx_ss_frame", "frame_id"),
-        Index("idx_ss_ts", "ts_utc"),
-        Index("idx_shrimp_stats_pond_ts", "pond_id", "ts_utc"),
+        Index("idx_id_frame", "frame_id"),
+        Index("idx_id_ts", "ts_utc"),
         Index("idx_id_modelver", "model_name", "model_version"),
     )
 
