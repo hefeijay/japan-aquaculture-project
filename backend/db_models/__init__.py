@@ -3,6 +3,7 @@ from .base import Base, db
 from .agent_task import AgentTask
 from .ai_decision import AIDecision, MessageType, DecisionRule
 from .camera import CameraImage, CameraHealth
+from .camera_recording_event import CameraRecordingEvent
 from .chat_history import ChatHistory
 from .device import Device, DeviceType
 from .pond import Pond
@@ -33,6 +34,7 @@ __all__ = [
     "DecisionRule",
     "CameraImage",
     "CameraHealth",
+    "CameraRecordingEvent",
     "ChatHistory",
     "Device",
     "DeviceType",

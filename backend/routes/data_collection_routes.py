@@ -30,11 +30,21 @@ logger = logging.getLogger(__name__)
 # sensor_id 映射表：用户输入的ID -> 实际数据库中的设备ID
 # 请根据实际情况修改映射关系
 SENSOR_ID_MAPPING = {
-    1: 1,   # 用户输入1 -> 映射到设备ID 23
-    2: 2,   # 用户输入2 -> 映射到设备ID 24
-    3: 3,   # 用户输入3 -> 映射到设备ID 25
-    4: 4,   # 用户输入4 -> 映射到设备ID 26
-    5: 5,   # 用户输入5 -> 映射到设备ID 27
+    1: 1,   # 用户输入1 -> 映射到设备ID 1
+    2: 2,   # 用户输入2 -> 映射到设备ID 2
+    3: 3,   # 用户输入3 -> 映射到设备ID 3
+    4: 4,   # 用户输入4 -> 映射到设备ID 4
+    5: 5,   # 用户输入5 -> 映射到设备ID 5
+}
+
+# camera_id 映射表：用户输入的 camera_id -> 实际数据库中的 device_id
+# 请根据实际情况修改映射关系（摄像头设备统一在 devices 表中）
+CAMERA_ID_MAPPING = {
+    1: 8,   # 用户输入1 -> 映射到设备ID 1
+    2: 9,   # 用户输入2 -> 映射到设备ID 2
+    3: 10,   # 用户输入3 -> 映射到设备ID 3
+    4: 11,   # 用户输入4 -> 映射到设备ID 4
+    5: 12,   # 用户输入5 -> 映射到设备ID 5
 }
 
 
@@ -741,13 +751,17 @@ def receive_camera_data():
     文件字段：
         - file: 图像文件（必需）
     数据字段：
-        - camera_id: 摄像头ID（必需）
+        - camera_id: 摄像头ID（必需，会通过 CAMERA_ID_MAPPING 映射到实际的 devices.id）
         - batch_id: 批次ID（可选）
-        - pool_id: 池号（可选）
+        - pool_id: 池号（可选，如未提供则从设备关联的 pond_id 获取）
         - timestamp: Unix时间戳（毫秒，可选）
         - width_px: 图像宽度（像素，可选）
         - height_px: 图像高度（像素，可选）
         - format: 图像格式（jpg/png，可选）
+    
+    注意：
+        - 所有设备（传感器、摄像头、喂食机等）都在 devices 表中统一管理
+        - camera_id 会映射到 devices.id，并验证设备类型为 camera
     """
     try:
         # 检查是否有文件
@@ -773,12 +787,21 @@ def receive_camera_data():
             }), 400
         
         try:
-            camera_id = int(camera_id)
+            camera_id_input = int(camera_id)
         except (ValueError, TypeError):
             return jsonify({
                 "success": False,
                 "error": "camera_id 必须是整数"
             }), 400
+        
+        # 应用 camera_id 映射
+        if camera_id_input in CAMERA_ID_MAPPING:
+            camera_id = CAMERA_ID_MAPPING[camera_id_input]
+            logger.debug(f"camera_id 映射: {camera_id_input} -> {camera_id}")
+        else:
+            # 如果不在映射表中，直接使用原始值
+            camera_id = camera_id_input
+            logger.debug(f"camera_id 未找到映射，使用原始值: {camera_id}")
         
         batch_id = request.form.get('batch_id')
         if batch_id:
@@ -871,52 +894,88 @@ def receive_camera_data():
         
         # 保存到数据库
         with db_session_factory() as session:
-            # 创建对象（只传入 init=True 的字段）
+            from db_models.device import Device, DeviceType
+            from db_models.pond import Pond
+            
+            # 通过设备ID查找设备，并验证是摄像头类型
+            device = session.query(Device)\
+                .join(DeviceType, Device.device_type_id == DeviceType.id)\
+                .filter(Device.id == camera_id)\
+                .filter(Device.is_deleted == False)\
+                .filter(DeviceType.category == 'camera')\
+                .first()
+            
+            if not device:
+                return jsonify({
+                    "success": False,
+                    "error": f"未找到ID为 {camera_id} 的摄像头设备，或该设备不是摄像头类型"
+                }), 404
+            
+            # 始终使用 device.pond_id 作为最终的 pond_id（与 sensor 接口逻辑一致）
+            actual_pond_id = device.pond_id
+            if actual_pond_id is None:
+                return jsonify({
+                    "success": False,
+                    "error": f"摄像头设备未关联养殖池: device_id={camera_id}"
+                }), 400
+            
+            # 如果用户提供了 pool_id，与 device.pond_id 比较，不一致则记录日志
+            if pool_id is not None:
+                try:
+                    user_pool_id = int(pool_id)
+                    if user_pool_id != device.pond_id:
+                        logger.warning(f"用户提供的 pool_id={user_pool_id} 与设备关联的 pond_id={device.pond_id} 不一致，将使用设备的 pond_id={device.pond_id}")
+                except (ValueError, TypeError):
+                    logger.warning(f"用户提供的 pool_id={pool_id} 不是有效整数，将使用设备的 pond_id={device.pond_id}")
+            
+            # 如果提供了 batch_id，验证批次是否存在，并检查 pond_id 是否一致
+            batch_db_id = None
+            if batch_id is not None:
+                from db_models.batch import Batch
+                batch = session.query(Batch).filter(Batch.id == batch_id).first()
+                if not batch:
+                    return jsonify({
+                        "success": False,
+                        "error": f"批次不存在: batch_id={batch_id}"
+                    }), 404
+                batch_db_id = batch.id
+                # 检查批次的 pond_id 与设备的 pond_id 是否一致
+                if batch.pond_id != device.pond_id:
+                    logger.warning(f"批次 batch_id={batch_id} 的 pond_id={batch.pond_id} 与设备关联的 pond_id={device.pond_id} 不一致")
+            
+            # 创建对象（只传入 init=True 的必填字段）
             camera_image = CameraImage(
-                camera_id=camera_id,
-                name=f"摄像头{camera_id}",
-                location=pool_id or "未知位置",
-                status="在线",
+                device_id=camera_id,
+                pond_id=actual_pond_id,
                 image_url=image_url,
-                last_update=timestamp_ms,
-                timestamp=timestamp_ms
+                ts_utc=ts_utc,
+                timestamp_str=ts_utc.strftime("%Y-%m-%d %H:%M:%S") if ts_utc else "",
+                width=width_px or 1920,
+                height=height_px or 1080,
+                format=format_str,
+                size=file_size
             )
             # 设置 init=False 的字段（通过属性赋值）
-            if batch_id is not None:
-                camera_image.batch_id = batch_id
-            if pool_id is not None:
-                camera_image.pool_id = pool_id
+            if batch_db_id is not None:
+                camera_image.batch_id = batch_db_id
             if storage_uri is not None:
                 camera_image.storage_uri = storage_uri
-            if ts_utc is not None:
-                camera_image.ts_utc = ts_utc
             if ts_local is not None:
                 camera_image.ts_local = ts_local
-            if width_px is not None:
-                camera_image.width_px = width_px
-            if height_px is not None:
-                camera_image.height_px = height_px
-            if format_str is not None:
-                camera_image.format = format_str
             camera_image.quality_flag = quality_flag
             if checksum is not None:
                 camera_image.checksum = checksum
-            # 设置其他可选字段
-            camera_image.timestamp_str = ts_utc.strftime("%Y-%m-%d %H:%M:%S") if ts_utc else ""
-            camera_image.width = width_px or 1920
-            camera_image.height = height_px or 1080
-            camera_image.size = file_size
             
             session.add(camera_image)
             session.commit()
             
-            logger.info(f"摄像头图像接收成功: camera_id={camera_id}, filename={filename}, size={file_size}")
+            logger.info(f"摄像头图像接收成功: device_id={camera_id}, pond_id={actual_pond_id}, filename={filename}, size={file_size}")
             
             return jsonify({
                 "success": True,
                 "data": {
                     "id": camera_image.id,
-                    "camera_id": camera_image.camera_id,
+                    "camera_id": camera_image.device_id,
                     "image_url": camera_image.image_url,
                     "timestamp": timestamp_ms
                 },

@@ -34,6 +34,16 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 logger = logging.getLogger(__name__)
 
 
+# camera_index 映射表：客户端传入的 camera_index -> 实际数据库中的 device_id
+# 请根据实际情况修改映射关系
+CAMERA_INDEX_MAPPING = {
+    0: 8,   # camera_index 0 -> 映射到设备ID 8
+    1: 9,   # camera_index 1 -> 映射到设备ID 9
+    2: 10,  # camera_index 2 -> 映射到设备ID 10
+    3: 11,  # camera_index 3 -> 映射到设备ID 11
+    4: 12,  # camera_index 4 -> 映射到设备ID 12
+}
+
 def generate_device_id(device_type_category: str, session) -> str:
     """
     生成设备ID：{category}_{数字}
@@ -1833,4 +1843,148 @@ def get_supported_connection_test_categories():
             "code": 500,
             "message": f"服务器内部错误: {str(e)}",
             "data": None
+        }), 500
+
+
+
+
+
+@api_bp.route('/camera_device_status', methods=['POST'])
+def receive_camera_device_status():
+    """
+    接收摄像头设备状态（录制事件）接口
+    
+    用于接收摄像头开始录制和结束录制的事件通知
+    
+    请求格式：application/json
+    
+    开始录制请求示例：
+    {
+        "camera_index": 0,
+        "event": "start_recording",
+        "timestamp": "2025-01-23T14:30:25.123456",
+        "duration": 60,
+        "fps": 30,
+        "filename": "camera_1_20250123143025.mp4"
+    }
+    
+    结束录制请求示例：
+    {
+        "camera_index": 0,
+        "event": "finish_recording",
+        "timestamp": "2025-01-23T14:30:26.123456",
+        "duration": 60,
+        "fps": 30,
+        "filename": "camera_1_20250123143025.mp4"
+    }
+    
+    Returns:
+        JSON格式的处理结果
+    """
+    try:
+        # 获取请求数据
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "请求体为空或格式不正确，需要JSON格式"
+            }), 400
+        
+        # 验证必填字段
+        required_fields = ['camera_index', 'event', 'timestamp', 'filename']
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return jsonify({
+                "success": False,
+                "error": f"缺少必填字段: {', '.join(missing_fields)}"
+            }), 400
+        
+        # 获取字段值
+        camera_index = data.get('camera_index')
+        event_type = data.get('event')
+        timestamp_str = data.get('timestamp')
+        duration = data.get('duration', 0)
+        fps = data.get('fps', 30)
+        filename = data.get('filename')
+        
+        # 验证 camera_index
+        if not isinstance(camera_index, int) or camera_index < 0:
+            return jsonify({
+                "success": False,
+                "error": "camera_index 必须是非负整数"
+            }), 400
+        
+        # 验证事件类型
+        valid_events = ['start_recording', 'finish_recording']
+        if event_type not in valid_events:
+            return jsonify({
+                "success": False,
+                "error": f"event 必须是以下值之一: {', '.join(valid_events)}"
+            }), 400
+        
+        # 解析时间戳
+        try:
+            # 支持带微秒的ISO格式
+            event_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        except (ValueError, AttributeError) as e:
+            return jsonify({
+                "success": False,
+                "error": f"timestamp 格式不正确，需要ISO 8601格式: {str(e)}"
+            }), 400
+        
+        # 尝试映射 camera_index 到 device_id
+        device_id = CAMERA_INDEX_MAPPING.get(camera_index)
+        if device_id:
+            logger.debug(f"camera_index {camera_index} 映射到 device_id {device_id}")
+        else:
+            logger.debug(f"camera_index {camera_index} 未找到映射，device_id 将为 None")
+        
+        # 导入模型并保存到数据库
+        from db_models.db_session import db_session_factory
+        from db_models.camera_recording_event import CameraRecordingEvent
+        
+        with db_session_factory() as session:
+            # 创建录制事件记录
+            recording_event = CameraRecordingEvent(
+                camera_index=camera_index,
+                event_type=event_type,
+                event_timestamp=event_timestamp,
+                duration=duration,
+                fps=fps,
+                filename=filename
+            )
+            
+            # 设置 device_id（如果映射存在）
+            if device_id:
+                recording_event.device_id = device_id
+            
+            session.add(recording_event)
+            session.commit()
+            
+            event_id = recording_event.id
+            
+            logger.info(
+                f"摄像头录制事件已保存: id={event_id}, "
+                f"camera_index={camera_index}, event={event_type}, "
+                f"filename={filename}, device_id={device_id}"
+            )
+        
+        return jsonify({
+            "success": True,
+            "message": f"摄像头{event_type}事件已记录",
+            "data": {
+                "id": event_id,
+                "camera_index": camera_index,
+                "device_id": device_id,
+                "event": event_type,
+                "filename": filename,
+                "timestamp": timestamp_str
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"处理摄像头设备状态失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
