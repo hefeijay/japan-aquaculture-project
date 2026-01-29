@@ -27,6 +27,16 @@ data_collection_bp = Blueprint('data_collection', __name__, url_prefix='/api/dat
 # 配置日志
 logger = logging.getLogger(__name__)
 
+# sensor_id 映射表：用户输入的ID -> 实际数据库中的设备ID
+# 请根据实际情况修改映射关系
+SENSOR_ID_MAPPING = {
+    1: 1,   # 用户输入1 -> 映射到设备ID 23
+    2: 2,   # 用户输入2 -> 映射到设备ID 24
+    3: 3,   # 用户输入3 -> 映射到设备ID 25
+    4: 4,   # 用户输入4 -> 映射到设备ID 26
+    5: 5,   # 用户输入5 -> 映射到设备ID 27
+}
+
 
 def get_type_name_from_metric(session, metric: str) -> Optional[tuple]:
     """
@@ -124,7 +134,7 @@ def receive_sensor_data():
     
     请求体格式：
     {
-        "sensor_id": "1",            // 必填，传感器设备主键ID（字符串形式的整数，对应devices.id）
+        "sensor_id": "1",            // 必填，传感器设备ID（字符串形式的整数，会通过映射表转换为实际设备ID）
         "value": 25.5,               // 必填，传感器读数值
         "pool_id": "1",              // 可选，养殖池主键ID（字符串形式的整数，对应ponds.id，如未提供则从device获取）
         "batch_id": "1",             // 可选，批次主键ID（字符串形式的整数，对应batches.id）
@@ -134,6 +144,7 @@ def receive_sensor_data():
     }
     
     注意：
+    - sensor_id 会通过 SENSOR_ID_MAPPING 映射到实际的数据库设备ID
     - metric 将从 device.sensor_type_id 关联的 sensor_types 表自动获取，无需传入
     - 异常值检测使用 sensor_types 表的 valid_min 和 valid_max 字段
     """
@@ -163,12 +174,21 @@ def receive_sensor_data():
         
         # 将 sensor_id 转换为整数
         try:
-            sensor_id = int(sensor_id_str)
+            sensor_id_input = int(sensor_id_str)
         except (ValueError, TypeError):
             return jsonify({
                 "success": False,
                 "error": f"sensor_id 必须是有效的整数: {sensor_id_str}"
             }), 400
+        
+        # 应用 sensor_id 映射
+        if sensor_id_input in SENSOR_ID_MAPPING:
+            sensor_id = SENSOR_ID_MAPPING[sensor_id_input]
+            logger.debug(f"sensor_id 映射: {sensor_id_input} -> {sensor_id}")
+        else:
+            # 如果不在映射表中，直接使用原始值
+            sensor_id = sensor_id_input
+            logger.debug(f"sensor_id 未找到映射，使用原始值: {sensor_id}")
         
         # 将 pool_id 转换为整数（如果提供了）
         pond_id = None
