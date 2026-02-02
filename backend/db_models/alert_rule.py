@@ -87,6 +87,24 @@ class AlertRule(Base):
         comment="报警阈值（字符串存储，灵活适配不同指标）"
     )
 
+    # 检测间隔数值（默认5）
+    check_interval: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=5,
+        comment="检测间隔数值（如 5, 10, 30）",
+        init=False
+    )
+
+    # 检测间隔单位（默认分钟）
+    check_interval_unit: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="minute",
+        comment="检测间隔单位（minute=分钟/hour=小时/day=天）",
+        init=False
+    )
+
     # 是否启用（默认启用）
     is_enabled: Mapped[bool] = mapped_column(
         Boolean,

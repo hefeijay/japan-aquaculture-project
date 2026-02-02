@@ -10,6 +10,7 @@
 - 传感器读数
 - 喂食机记录
 - 摄像头图片和健康检查
+- 预警规则和预警记录
 """
 
 import sys
@@ -28,7 +29,8 @@ if backend_dir not in sys.path:
 from app_factory import create_app
 from db_models import (
     db, Pond, Batch, DeviceType, SensorType, Device, 
-    SensorReading, FeederLog, CameraImage, CameraHealth, User
+    SensorReading, FeederLog, CameraImage, CameraHealth, User,
+    AlertRule, AlertNotification
 )
 
 
@@ -770,6 +772,150 @@ def generate_mock_data():
         print(f"  ✓ 摄像头图片生成完成，共 {image_count} 条")
         print(f"  ✓ 摄像头健康检查生成完成，共 {health_count} 条")
         
+        # 9. 生成预警规则和预警记录
+        print("\n[9/9] 生成预警规则和预警记录...")
+        alert_rules = []
+        alert_notifications_list = []
+        
+        # 预警规则配置（为传感器设备创建预警规则）
+        alert_rules_config = [
+            {
+                "metric": "do",
+                "severity_level": "critical",
+                "trigger_condition": "below",
+                "threshold": "5.0",
+                "check_interval": 5,
+                "check_interval_unit": "minute",
+                "description": "溶解氧浓度过低预警"
+            },
+            {
+                "metric": "temperature",
+                "severity_level": "warning",
+                "trigger_condition": "above",
+                "threshold": "32.0",
+                "check_interval": 10,
+                "check_interval_unit": "minute",
+                "description": "温度过高预警"
+            },
+            {
+                "metric": "PH",
+                "severity_level": "warning",
+                "trigger_condition": "below",
+                "threshold": "7.0",
+                "check_interval": 15,
+                "check_interval_unit": "minute",
+                "description": "pH值过低预警"
+            }
+        ]
+        
+        rule_counter = 1
+        for rule_config in alert_rules_config:
+            # 找到对应 metric 的传感器设备
+            target_device = None
+            for device in sensor_devices:
+                if device.sensor_type and device.sensor_type.metric == rule_config["metric"]:
+                    target_device = device
+                    break
+            
+            if not target_device:
+                print(f"  ⚠ 未找到 {rule_config['metric']} 类型的传感器设备，跳过创建规则")
+                continue
+            
+            rule_id = f"AT-{rule_counter:03d}"
+            existing = db.session.query(AlertRule).filter_by(rule_id=rule_id).first()
+            
+            if existing:
+                alert_rules.append(existing)
+                print(f"  ✓ 预警规则已存在: {rule_id}")
+            else:
+                # 创建预警规则
+                rule = AlertRule(
+                    device_id=target_device.id,
+                    rule_id=rule_id,
+                    metric=rule_config["metric"],
+                    severity_level=rule_config["severity_level"],
+                    trigger_condition=rule_config["trigger_condition"],
+                    threshold=rule_config["threshold"]
+                )
+                # 设置检测间隔（init=False 的字段）
+                rule.check_interval = rule_config["check_interval"]
+                rule.check_interval_unit = rule_config["check_interval_unit"]
+                rule.is_enabled = True
+                
+                db.session.add(rule)
+                db.session.flush()
+                alert_rules.append(rule)
+                print(f"  ✓ 创建预警规则: {rule_id} - {rule_config['description']}")
+            
+            rule_counter += 1
+        
+        db.session.commit()
+        
+        # 为每个预警规则生成2-3条预警记录
+        notification_counter = 1
+        for rule in alert_rules:
+            # 每个规则生成2-3条预警记录
+            notification_count_per_rule = random.randint(2, 3)
+            
+            # 获取关联设备
+            device = db.session.query(Device).filter_by(id=rule.device_id).first()
+            device_name = device.name if device else "未知设备"
+            
+            for i in range(notification_count_per_rule):
+                notification_id = f"REC-{notification_counter:03d}"
+                existing = db.session.query(AlertNotification).filter_by(notification_id=notification_id).first()
+                
+                if existing:
+                    alert_notifications_list.append(existing)
+                else:
+                    # 生成随机触发时间（最近7天内）
+                    triggered_time = datetime.now(timezone.utc) - timedelta(
+                        days=random.randint(0, 7),
+                        hours=random.randint(0, 23),
+                        minutes=random.randint(0, 59)
+                    )
+                    
+                    # 根据规则生成预警内容和当前值
+                    if rule.metric == "do":
+                        current_val = round(random.uniform(3.5, 4.9), 2)
+                        content = f"溶解氧浓度低于阈值{rule.threshold}mg/L，当前值: {current_val}mg/L"
+                    elif rule.metric == "temperature":
+                        current_val = round(random.uniform(32.1, 35.0), 2)
+                        content = f"温度高于阈值{rule.threshold}°C，当前值: {current_val}°C"
+                    elif rule.metric == "PH":
+                        current_val = round(random.uniform(6.0, 6.9), 2)
+                        content = f"pH值低于阈值{rule.threshold}，当前值: {current_val}"
+                    else:
+                        current_val = round(random.uniform(0, 100), 2)
+                        content = f"{rule.metric}异常，当前值: {current_val}"
+                    
+                    # 创建预警记录
+                    notification = AlertNotification(
+                        notification_id=notification_id,
+                        alert_rule_id=rule.id,
+                        device_id=rule.device_id,
+                        content=content,
+                        triggered_at=triggered_time
+                    )
+                    # 设置其他字段（init=False 的字段）
+                    notification.current_value = str(current_val)
+                    
+                    # 随机设置状态（70%待处理，30%已解决）
+                    if random.random() > 0.7:
+                        notification.status = "resolved"
+                        notification.resolved_at = triggered_time + timedelta(hours=random.randint(1, 24))
+                    else:
+                        notification.status = "pending"
+                    
+                    db.session.add(notification)
+                    alert_notifications_list.append(notification)
+                
+                notification_counter += 1
+        
+        db.session.commit()
+        print(f"  ✓ 预警规则生成完成，共 {len(alert_rules)} 条")
+        print(f"  ✓ 预警记录生成完成，共 {len(alert_notifications_list)} 条")
+        
         print("\n" + "=" * 60)
         print("Mock数据生成完成！")
         print("=" * 60)
@@ -784,6 +930,8 @@ def generate_mock_data():
         print(f"  - 喂食机记录: {feeder_log_count} 条")
         print(f"  - 摄像头图片: {image_count} 条")
         print(f"  - 健康检查: {health_count} 条")
+        print(f"  - 预警规则: {len(alert_rules)} 条")
+        print(f"  - 预警记录: {len(alert_notifications_list)} 条")
         print("=" * 60)
 
 

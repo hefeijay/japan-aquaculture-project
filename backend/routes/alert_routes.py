@@ -97,7 +97,9 @@ def create_alert_rule():
             "metric": "do",
             "severity_level": "critical",
             "trigger_condition": "below",
-            "threshold": "5.0"
+            "threshold": "5.0",
+            "check_interval": 5,
+            "check_interval_unit": "minute"
         }
     
     Returns:
@@ -150,13 +152,35 @@ def create_alert_rule():
                 "data": None
             }), 400
         
+        # 校验检测间隔单位（如果提供）
+        check_interval = data.get('check_interval', 5)
+        check_interval_unit = data.get('check_interval_unit', 'minute')
+        
+        valid_interval_units = ['minute', 'hour', 'day']
+        if check_interval_unit not in valid_interval_units:
+            return jsonify({
+                "code": 400,
+                "message": f"无效的检测间隔单位，可选值: {', '.join(valid_interval_units)}",
+                "data": None
+            }), 400
+        
+        # 校验检测间隔数值
+        if not isinstance(check_interval, int) or check_interval < 1:
+            return jsonify({
+                "code": 400,
+                "message": "检测间隔必须是大于0的整数",
+                "data": None
+            }), 400
+        
         # 调用服务
         result = AlertService.create_rule(
             device_id=data['device_id'],
             metric=data['metric'],
             severity_level=data['severity_level'],
             trigger_condition=data['trigger_condition'],
-            threshold=str(data['threshold'])
+            threshold=str(data['threshold']),
+            check_interval=check_interval,
+            check_interval_unit=check_interval_unit
         )
         
         return jsonify({
@@ -196,6 +220,8 @@ def update_alert_rule(rule_id: int):
             "severity_level": "warning",
             "trigger_condition": "below",
             "threshold": "6.0",
+            "check_interval": 10,
+            "check_interval_unit": "minute",
             "is_enabled": true
         }
     
@@ -245,6 +271,25 @@ def update_alert_rule(rule_id: int):
                 return jsonify({
                     "code": 400,
                     "message": f"无效的检测指标，可选值: {', '.join(valid_metrics)}",
+                    "data": None
+                }), 400
+        
+        # 校验检测间隔单位（如果提供）
+        if 'check_interval_unit' in data and data['check_interval_unit']:
+            valid_interval_units = ['minute', 'hour', 'day']
+            if data['check_interval_unit'] not in valid_interval_units:
+                return jsonify({
+                    "code": 400,
+                    "message": f"无效的检测间隔单位，可选值: {', '.join(valid_interval_units)}",
+                    "data": None
+                }), 400
+        
+        # 校验检测间隔数值（如果提供）
+        if 'check_interval' in data and data['check_interval'] is not None:
+            if not isinstance(data['check_interval'], int) or data['check_interval'] < 1:
+                return jsonify({
+                    "code": 400,
+                    "message": "检测间隔必须是大于0的整数",
                     "data": None
                 }), 400
         

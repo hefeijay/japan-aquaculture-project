@@ -169,7 +169,9 @@ class AlertService:
         metric: str,
         severity_level: str,
         trigger_condition: str,
-        threshold: str
+        threshold: str,
+        check_interval: int = 5,
+        check_interval_unit: str = "minute"
     ) -> Dict[str, Any]:
         """
         创建预警规则
@@ -180,6 +182,8 @@ class AlertService:
             severity_level: 严重级别
             trigger_condition: 触发条件
             threshold: 阈值
+            check_interval: 检测间隔数值（默认5）
+            check_interval_unit: 检测间隔单位（默认minute）
             
         Returns:
             创建的规则信息
@@ -218,6 +222,10 @@ class AlertService:
                     threshold=threshold
                 )
                 
+                # 设置检测间隔（使用属性赋值而非构造函数参数，因为有默认值）
+                rule.check_interval = check_interval
+                rule.check_interval_unit = check_interval_unit
+                
                 session.add(rule)
                 session.commit()
                 session.refresh(rule)
@@ -249,7 +257,7 @@ class AlertService:
                     raise ValueError(f"预警规则不存在: {rule_pk_id}")
                 
                 # 允许更新的字段
-                allowed_fields = ['device_id', 'metric', 'severity_level', 'trigger_condition', 'threshold', 'is_enabled']
+                allowed_fields = ['device_id', 'metric', 'severity_level', 'trigger_condition', 'threshold', 'check_interval', 'check_interval_unit', 'is_enabled']
                 
                 for key, value in kwargs.items():
                     if key in allowed_fields and value is not None:
@@ -426,6 +434,8 @@ class AlertService:
             "severity_level": rule.severity_level,
             "trigger_condition": rule.trigger_condition,
             "threshold": rule.threshold,
+            "check_interval": rule.check_interval,
+            "check_interval_unit": rule.check_interval_unit,
             "is_enabled": rule.is_enabled,
             "created_at": rule.created_at.isoformat() if rule.created_at else None,
             "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
