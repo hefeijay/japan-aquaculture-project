@@ -1999,7 +1999,7 @@
       "post": {
         "tags": ["设备预警"],
         "summary": "新增预警规则",
-        "description": "创建新的预警规则。规则业务ID（rule_id）由系统自动生成，格式为 AT-XXX（如 AT-001）。\n\n**⚠️ 当前仅支持传感器设备**：\n- 传感器设备：根据传感器类型选择对应的检测指标（metric）\n- 非传感器设备（喂食机、摄像头等）：暂不支持创建预警规则\n\n**检测指标枚举（metric）**：\n| metric | 名称 | 单位 |\n|--------|------|------|\n| do | 溶解氧浓度 | mg/L |\n| ph | pH值 | pH |\n| temperature | 温度 | °C |\n| turbidity | 浊度 | NTU |\n| water_level | 液位 | mm |\n| ammonia | 氨氮 | mg/L |\n| nitrite | 亚硝酸盐 | mg/L |\n\n**检测间隔设置**：\n| check_interval_unit | 说明 |\n|---------------------|------|\n| minute | 分钟 |\n| hour | 小时 |\n| day | 天 |\n\n示例：`check_interval=5, check_interval_unit=minute` 表示每5分钟检测一次\n\n**前端交互流程**：\n1. 用户选择传感器设备（device_id）\n2. 根据设备的传感器类型，显示对应的检测指标（如溶解氧传感器只显示 do）\n3. 用户填写严重级别、触发条件、阈值\n4. 用户设置检测间隔（数值+单位）\n5. 提交创建预警规则\n\n**必填字段**：\n- `device_id`: 设备ID（必须是传感器设备）\n- `metric`: 检测指标（见上方枚举表）\n- `severity_level`: 严重级别（info/warning/critical）\n- `trigger_condition`: 触发判定（below=低于/above=高于）\n- `threshold`: 报警阈值（字符串格式）\n\n**可选字段**：\n- `check_interval`: 检测间隔数值（默认5）\n- `check_interval_unit`: 检测间隔单位（默认minute）",
+        "description": "创建新的预警规则。规则业务ID（rule_id）由系统自动生成，格式为 AT-XXX（如 AT-001）。\n\n**⚠️ 当前仅支持传感器设备**：\n- 传感器设备：根据传感器类型选择对应的检测指标（metric）\n- 非传感器设备（喂食机、摄像头等）：暂不支持创建预警规则\n\n**🔒 规则唯一性约束**：\n同一设备的同一检测指标、同一触发条件、同一严重级别**不能重复创建规则**。\n\n唯一性判断条件（4个字段的组合必须唯一）：\n1. `device_id`（同一设备）\n2. `metric`（同一检测指标）\n3. `trigger_condition`（同一触发条件：above/below）\n4. `severity_level`（同一严重级别：info/warning/critical）\n\n**允许的场景**：\n- ✅ 同一设备、同一指标、**不同触发条件**（如：温度>30 和 温度<20）\n- ✅ 同一设备、同一指标、**不同严重级别**（如：温度>30 warning 和 温度>35 critical，分级预警）\n- ✅ 同一设备、**不同指标**\n- ✅ **不同设备**\n\n**不允许的场景**：\n- ❌ 同一设备、同一指标、同一触发条件、同一严重级别，即使阈值不同（会产生冲突）\n\n**检测指标枚举（metric）**：\n| metric | 名称 | 单位 |\n|--------|------|------|\n| do | 溶解氧浓度 | mg/L |\n| ph | pH值 | pH |\n| temperature | 温度 | °C |\n| turbidity | 浊度 | NTU |\n| water_level | 液位 | mm |\n| ammonia | 氨氮 | mg/L |\n| nitrite | 亚硝酸盐 | mg/L |\n\n**检测间隔设置**：\n| check_interval_unit | 说明 |\n|---------------------|------|\n| minute | 分钟 |\n| hour | 小时 |\n| day | 天 |\n\n示例：`check_interval=5, check_interval_unit=minute` 表示每5分钟检测一次\n\n**前端交互流程**：\n1. 用户选择传感器设备（device_id）\n2. 根据设备的传感器类型，显示对应的检测指标（如溶解氧传感器只显示 do）\n3. 用户填写严重级别、触发条件、阈值\n4. 用户设置检测间隔（数值+单位）\n5. 提交创建预警规则\n\n**必填字段**：\n- `device_id`: 设备ID（必须是传感器设备）\n- `metric`: 检测指标（见上方枚举表）\n- `severity_level`: 严重级别（info/warning/critical）\n- `trigger_condition`: 触发判定（below=低于/above=高于）\n- `threshold`: 报警阈值（字符串格式）\n\n**可选字段**：\n- `check_interval`: 检测间隔数值（默认5）\n- `check_interval_unit`: 检测间隔单位（默认minute）",
         "operationId": "createAlertRule",
         "requestBody": {
           "description": "预警规则信息",
@@ -2022,7 +2022,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "预警规则创建成功",
             "content": {
               "application/json": {
@@ -2065,7 +2065,28 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "description": "请求参数错误或规则冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "该设备的该指标在该触发条件和严重级别下已存在预警规则（规则ID: AT-001）。同一设备的同一检测指标、同一触发条件（above/below）、同一严重级别不能重复创建规则。"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
             "description": "设备不存在",

@@ -71,6 +71,10 @@ def db_session_factory():
     logger.debug("数据库会话已创建。")
     try:
         yield session
+    except ValueError:
+        # 业务验证错误，不打印堆栈
+        session.rollback()
+        raise
     except Exception:
         logger.error("数据库会话因异常而回滚。", exc_info=True)
         session.rollback()

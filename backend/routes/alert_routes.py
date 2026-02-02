@@ -75,7 +75,7 @@ def search_alert_rules():
                 "items": items,
                 "pagination": pagination
             }
-        })
+        }), 200
         
     except Exception as e:
         logger.error(f"搜索预警规则失败: {str(e)}", exc_info=True)
@@ -187,7 +187,7 @@ def create_alert_rule():
             "code": 200,
             "message": "预警规则创建成功",
             "data": result
-        }), 201
+        }),200
         
     except ValueError as e:
         return jsonify({
@@ -304,7 +304,7 @@ def update_alert_rule(rule_id: int):
             "code": 200,
             "message": "预警规则更新成功",
             "data": result
-        })
+        }), 200
         
     except ValueError as e:
         return jsonify({
@@ -340,7 +340,7 @@ def delete_alert_rule(rule_id: int):
             "code": 200,
             "message": "预警规则删除成功",
             "data": result
-        })
+        }), 200
         
     except ValueError as e:
         return jsonify({
@@ -412,7 +412,7 @@ def get_alert_rule_notifications(rule_id: int):
                 "items": items,
                 "pagination": pagination
             }
-        })
+        }), 200
         
     except ValueError as e:
         return jsonify({
@@ -448,7 +448,7 @@ def resolve_alert_notification(notification_id: int):
             "code": 200,
             "message": "预警已标记为已解决",
             "data": result
-        })
+        }), 200
         
     except ValueError as e:
         error_msg = str(e)

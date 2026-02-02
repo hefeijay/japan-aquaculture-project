@@ -209,6 +209,20 @@ class AlertService:
                 if device_type.category != 'sensor':
                     raise ValueError(f"当前仅支持传感器设备创建预警规则，该设备类型为: {device_type.category}")
                 
+                # 检查规则唯一性（同一设备、同一指标、同一触发条件、同一严重级别）
+                existing_rule = session.query(AlertRule).filter(
+                    AlertRule.device_id == device_id,
+                    AlertRule.metric == metric,
+                    AlertRule.trigger_condition == trigger_condition,
+                    AlertRule.severity_level == severity_level
+                ).first()
+                
+                if existing_rule:
+                    raise ValueError(
+                        f"该设备的该指标在该触发条件和严重级别下已存在预警规则（规则ID: {existing_rule.rule_id}）。"
+                        f"同一设备的同一检测指标、同一触发条件（above/below）、同一严重级别不能重复创建规则。"
+                    )
+                
                 # 生成规则ID
                 rule_id = cls.generate_rule_id(session)
                 
@@ -233,7 +247,12 @@ class AlertService:
                 logger.info(f"创建预警规则成功: {rule_id}")
                 return cls._format_rule(rule, device)
                 
+        except ValueError as e:
+            # 业务验证错误（设备不存在、规则冲突等），不打印堆栈
+            logger.warning(f"创建预警规则失败: {str(e)}")
+            raise
         except Exception as e:
+            # 系统错误，打印完整堆栈
             logger.error(f"创建预警规则失败: {str(e)}", exc_info=True)
             raise
     
@@ -272,6 +291,9 @@ class AlertService:
                 logger.info(f"更新预警规则成功: {rule.rule_id}")
                 return cls._format_rule(rule, device)
                 
+        except ValueError as e:
+            logger.warning(f"更新预警规则失败: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"更新预警规则失败: {str(e)}", exc_info=True)
             raise
@@ -305,6 +327,9 @@ class AlertService:
                 logger.info(f"删除预警规则成功: {result['rule_id']}")
                 return result
                 
+        except ValueError as e:
+            logger.warning(f"删除预警规则失败: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"删除预警规则失败: {str(e)}", exc_info=True)
             raise
@@ -375,6 +400,9 @@ class AlertService:
                 
                 return rule_info, items, pagination
                 
+        except ValueError as e:
+            logger.warning(f"获取预警通知历史失败: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"获取预警通知历史失败: {str(e)}", exc_info=True)
             raise
@@ -416,6 +444,9 @@ class AlertService:
                 logger.info(f"标记预警为已处理: {notification.notification_id}")
                 return cls._format_notification(notification, device, rule)
                 
+        except ValueError as e:
+            logger.warning(f"标记预警处理失败: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"标记预警处理失败: {str(e)}", exc_info=True)
             raise
