@@ -24,6 +24,8 @@ from .manual_doc import ManualDoc
 from .history_record import HistoryRecord
 from .model import Model
 from .knowledge_base import KnowledgeBase, KnowledgeDocument
+from .alert_rule import AlertRule
+from .alert_notification import AlertNotification
 
 __all__ = [
     "Base",
@@ -57,4 +59,6 @@ __all__ = [
     "Model",
     "KnowledgeBase",
     "KnowledgeDocument",
+    "AlertRule",
+    "AlertNotification",
 ]

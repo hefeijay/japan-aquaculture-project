@@ -3,6 +3,7 @@
 """
 生成Mock数据脚本
 根据数据库表设计生成测试数据，包括：
+- 用户（gmm, admin, fish）
 - 养殖池、批次
 - 设备类型、传感器类型
 - 设备（传感器、喂食机、摄像头）
@@ -17,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import random
 import uuid
+import hashlib
 
 # 添加 backend 目录到 Python 路径
 backend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend')
@@ -26,7 +28,7 @@ if backend_dir not in sys.path:
 from app_factory import create_app
 from db_models import (
     db, Pond, Batch, DeviceType, SensorType, Device, 
-    SensorReading, FeederLog, CameraImage, CameraHealth
+    SensorReading, FeederLog, CameraImage, CameraHealth, User
 )
 
 
@@ -36,32 +38,32 @@ SENSOR_TYPES_CONFIG = [
         "type_name": "dissolved_oxygen_aturation",
         "metric": "do",
         "unit": "mg/L",
-        "valid_min": 3.0,
-        "valid_max": 15.0,
+        "valid_min": 4.0,
+        "valid_max": 9.0,
         "description": "溶解氧饱和度"
     },
     {
         "type_name": "liquid_level",
         "metric": "water_level",
         "unit": "mm",
-        "valid_min": 0.5,
-        "valid_max": 5.0,
+        "valid_min": 980,
+        "valid_max": 1000,
         "description": "液位"
     },
     {
         "type_name": "PH",
         "metric": "PH",
         "unit": "pH",
-        "valid_min": 6.0,
-        "valid_max": 9.0,
+        "valid_min": 7.4,
+        "valid_max": 8.6,
         "description": "PH"
     },
     {
         "type_name": "temperature",
         "metric": "temperature",
         "unit": "°C",
-        "valid_min": 15.0,
-        "valid_max": 35.0,
+        "valid_min": 22.0,
+        "valid_max": 34.0,
         "description": "温度"
     },
     {
@@ -69,7 +71,7 @@ SENSOR_TYPES_CONFIG = [
         "metric": "turbidity",
         "unit": "NTU",
         "valid_min": 0.0,
-        "valid_max": 100.0,
+        "valid_max": 200.0,
         "description": "浊度"
     },
     {
@@ -77,7 +79,7 @@ SENSOR_TYPES_CONFIG = [
         "metric": "ammonia",
         "unit": "mg/L",
         "valid_min": 0.0,
-        "valid_max": 2.0,
+        "valid_max": 0.5,
         "description": "氨氮浓度"
     },
     {
@@ -246,8 +248,37 @@ def generate_mock_data():
     app = create_app()
     
     with app.app_context():
+        # 0. 创建用户
+        print("\n[0/9] 创建用户...")
+        users_config = [
+            {"username": "gmm", "user_id": "USER_GMM", "role": "admin"},
+            {"username": "admin", "user_id": "USER_ADMIN", "role": "admin"},
+            {"username": "fish", "user_id": "USER_FISH", "role": "user"}
+        ]
+        password = "123456"
+        # 使用MD5哈希（32字符），符合password_hash字段String(128)的限制
+        # 系统支持MD5哈希验证（见backend/routes/api_routes.py）
+        password_hash = hashlib.md5(password.encode('utf-8')).hexdigest()
+        
+        for user_config in users_config:
+            existing = db.session.query(User).filter_by(username=user_config["username"]).first()
+            if existing:
+                print(f"  ✓ 用户已存在: {user_config['username']}")
+            else:
+                user = User(
+                    user_id=user_config["user_id"],
+                    username=user_config["username"],
+                    password_hash=password_hash,
+                    role=user_config["role"],
+                    status="active"
+                )
+                db.session.add(user)
+                print(f"  ✓ 创建用户: {user_config['username']} (密码: {password})")
+        
+        db.session.commit()
+        
         # 1. 创建设备类型
-        print("\n[1/8] 创建设备类型...")
+        print("\n[1/9] 创建设备类型...")
         device_type_map = {}
         for dt_config in DEVICE_TYPES_CONFIG:
             existing = db.session.query(DeviceType).filter_by(name=dt_config["name"]).first()
@@ -268,7 +299,7 @@ def generate_mock_data():
         db.session.commit()
         
         # 2. 创建传感器类型
-        print("\n[2/8] 创建传感器类型...")
+        print("\n[2/9] 创建传感器类型...")
         sensor_type_map = {}
         for st_config in SENSOR_TYPES_CONFIG:
             existing = db.session.query(SensorType).filter_by(metric=st_config["metric"]).first()
@@ -292,7 +323,7 @@ def generate_mock_data():
         db.session.commit()
         
         # 3. 创建养殖池
-        print("\n[3/8] 创建养殖池...")
+        print("\n[3/9] 创建养殖池...")
         ponds = []
         pond_names = ["1号池", "2号池", "3号池", "4号池"]
         for i, name in enumerate(pond_names, 1):
@@ -317,7 +348,7 @@ def generate_mock_data():
         db.session.commit()
         
         # 4. 创建批次
-        print("\n[4/8] 创建批次...")
+        print("\n[4/9] 创建批次...")
         batches = []
         # 只创建2个批次
         for j in range(1, 3):
@@ -356,7 +387,7 @@ def generate_mock_data():
         db.session.commit()
         
         # 5. 创建设备（传感器、喂食机、摄像头）
-        print("\n[5/8] 创建设备...")
+        print("\n[5/9] 创建设备...")
         sensor_devices = []
         feeder_devices = []
         camera_devices = []
@@ -539,7 +570,7 @@ def generate_mock_data():
         print(f"  ✓ 创建其他设备: {len(other_devices)} 个")
         
         # 6. 生成传感器读数（最近30天，每小时1条）
-        print("\n[6/8] 生成传感器读数...")
+        print("\n[6/9] 生成传感器读数...")
         reading_count = 0
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=30)
@@ -589,7 +620,7 @@ def generate_mock_data():
         print(f"  ✓ 传感器读数生成完成，共 {reading_count} 条")
         
         # 7. 生成喂食机记录（最近30天，每天2-4次）
-        print("\n[7/8] 生成喂食机记录...")
+        print("\n[7/9] 生成喂食机记录...")
         feeder_log_count = 0
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=30)
@@ -637,7 +668,7 @@ def generate_mock_data():
         print(f"  ✓ 喂食机记录生成完成，共 {feeder_log_count} 条")
         
         # 8. 生成摄像头图片和健康检查（最近30天）
-        print("\n[8/8] 生成摄像头数据...")
+        print("\n[8/9] 生成摄像头数据...")
         image_count = 0
         health_count = 0
         end_time = datetime.now(timezone.utc)

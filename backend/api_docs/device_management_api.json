@@ -42,6 +42,10 @@
     {
       "name": "配置和字典",
       "description": "用于支持前端表单的配置接口"
+    },
+    {
+      "name": "设备预警",
+      "description": "设备预警规则管理和预警通知处理"
     }
   ],
   "paths": {
@@ -1849,6 +1853,600 @@
           }
         }
       }
+    },
+    "/alert-rules": {
+      "get": {
+        "tags": ["设备预警"],
+        "summary": "搜索预警规则",
+        "description": "搜索预警规则列表，支持按设备名称或规则业务ID（如AT-001）模糊匹配，默认返回全部启用的规则。支持分页。",
+        "operationId": "searchAlertRules",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "搜索关键词（按设备名称或规则业务ID rule_id模糊搜索，如AT-001）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "AT-001"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "description": "按设备ID筛选",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "severity_level",
+            "in": "query",
+            "description": "按严重级别筛选",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["info", "warning", "critical"]
+            }
+          },
+          {
+            "name": "is_enabled",
+            "in": "query",
+            "description": "按启用状态筛选（默认只返回启用的规则）",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（从1开始）",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取预警规则列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AlertRuleDetail"
+                          }
+                        },
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 1,
+                        "device_id": 1,
+                        "device_name": "一号池溶解氧传感器",
+                        "rule_id": "AT-001",
+                        "metric": "dissolved_oxygen",
+                        "severity_level": "critical",
+                        "trigger_condition": "below",
+                        "threshold": "5.0",
+                        "is_enabled": true,
+                        "created_at": "2026-01-14T10:30:00Z",
+                        "updated_at": "2026-01-14T10:30:00Z"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "page_size": 20,
+                      "total": 1,
+                      "total_pages": 1,
+                      "has_next": false,
+                      "has_prev": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["设备预警"],
+        "summary": "新增预警规则",
+        "description": "创建新的预警规则。规则业务ID（rule_id）由系统自动生成，格式为 AT-XXX（如 AT-001）。\n\n**⚠️ 当前仅支持传感器设备**：\n- 传感器设备：根据传感器类型选择对应的检测指标（metric）\n- 非传感器设备（喂食机、摄像头等）：暂不支持创建预警规则\n\n**检测指标枚举（metric）**：\n| metric | 名称 | 单位 |\n|--------|------|------|\n| do | 溶解氧浓度 | mg/L |\n| ph | pH值 | pH |\n| temperature | 温度 | °C |\n| turbidity | 浊度 | NTU |\n| water_level | 液位 | mm |\n| ammonia | 氨氮 | mg/L |\n| nitrite | 亚硝酸盐 | mg/L |\n\n**前端交互流程**：\n1. 用户选择传感器设备（device_id）\n2. 根据设备的传感器类型，显示对应的检测指标（如溶解氧传感器只显示 do）\n3. 用户填写严重级别、触发条件、阈值\n4. 提交创建预警规则\n\n**必填字段**：\n- `device_id`: 设备ID（必须是传感器设备）\n- `metric`: 检测指标（见上方枚举表）\n- `severity_level`: 严重级别（info/warning/critical）\n- `trigger_condition`: 触发判定（below=低于/above=高于）\n- `threshold`: 报警阈值（字符串格式）",
+        "operationId": "createAlertRule",
+        "requestBody": {
+          "description": "预警规则信息",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleCreateRequest"
+              },
+              "example": {
+                "device_id": 1,
+                "metric": "do",
+                "severity_level": "critical",
+                "trigger_condition": "below",
+                "threshold": "5.0"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "预警规则创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "预警规则创建成功"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRuleDetail"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "预警规则创建成功",
+                  "data": {
+                    "id": 1,
+                    "device_id": 1,
+                    "device_name": "一号池溶解氧传感器",
+                    "rule_id": "AT-001",
+                    "metric": "dissolved_oxygen",
+                    "severity_level": "critical",
+                    "trigger_condition": "below",
+                    "threshold": "5.0",
+                    "is_enabled": true,
+                    "created_at": "2026-01-14T10:30:00Z",
+                    "updated_at": "2026-01-14T10:30:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备不存在"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/alert-rules/{rule_id}": {
+      "put": {
+        "tags": ["设备预警"],
+        "summary": "修改预警规则",
+        "description": "更新预警规则，支持部分更新。\n\n**可更新字段**：\n- `device_id`: 设备ID\n- `metric`: 检测指标\n- `severity_level`: 严重级别\n- `trigger_condition`: 触发判定\n- `threshold`: 报警阈值\n- `is_enabled`: 是否启用",
+        "operationId": "updateAlertRule",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "description": "预警规则主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "更新的预警规则信息（支持部分更新）",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleUpdateRequest"
+              },
+              "example": {
+                "severity_level": "warning",
+                "threshold": "6.0",
+                "is_enabled": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "预警规则更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "预警规则更新成功"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRuleDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["设备预警"],
+        "summary": "删除预警规则",
+        "description": "删除指定的预警规则。删除规则后，该规则下的预警通知历史仍会保留。",
+        "operationId": "deleteAlertRule",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "description": "预警规则主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "预警规则删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "预警规则删除成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "rule_id": {
+                          "type": "string",
+                          "example": "AT-001"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/alert-rules/{rule_id}/notifications": {
+      "get": {
+        "tags": ["设备预警"],
+        "summary": "获取指定规则的预警历史",
+        "description": "获取指定预警规则的预警通知历史记录，支持按状态筛选和分页。",
+        "operationId": "getAlertRuleNotifications",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "description": "预警规则主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "按状态筛选（pending=待处理/resolved=已解决）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "resolved"]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（从1开始）",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取预警历史",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "rule": {
+                          "$ref": "#/components/schemas/AlertRuleDetail"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AlertNotificationDetail"
+                          }
+                        },
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "rule": {
+                      "id": 1,
+                      "device_id": 1,
+                      "device_name": "一号池溶解氧传感器",
+                      "rule_id": "AT-001",
+                      "metric": "do",
+                      "severity_level": "critical",
+                      "trigger_condition": "below",
+                      "threshold": "5.0",
+                      "is_enabled": true,
+                      "created_at": "2026-01-14T10:30:00Z",
+                      "updated_at": "2026-01-14T10:30:00Z"
+                    },
+                    "items": [
+                      {
+                        "id": 1,
+                        "notification_id": "REC-001",
+                        "alert_rule_id": 1,
+                        "device_id": 1,
+                        "device_name": "一号池溶解氧传感器",
+                        "rule_id": "AT-001",
+                        "status": "pending",
+                        "content": "溶解氧低于阈值5.0，当前值: 4.2",
+                        "current_value": "4.2",
+                        "triggered_at": "2026-01-14T11:30:00Z",
+                        "resolved_at": null,
+                        "created_at": "2026-01-14T11:30:00Z",
+                        "updated_at": "2026-01-14T11:30:00Z"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "page_size": 20,
+                      "total": 1,
+                      "total_pages": 1,
+                      "has_next": false,
+                      "has_prev": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/alert-notifications/{notification_id}/resolve": {
+      "post": {
+        "tags": ["设备预警"],
+        "summary": "标记预警为已处理",
+        "description": "将指定的预警通知标记为已解决状态。",
+        "operationId": "resolveAlertNotification",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "description": "预警通知主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "预警标记处理成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "预警已标记为已解决"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertNotificationDetail"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "预警已标记为已解决",
+                  "data": {
+                    "id": 1,
+                    "notification_id": "REC-001",
+                    "alert_rule_id": 1,
+                    "device_id": 1,
+                    "device_name": "一号池溶解氧传感器",
+                    "rule_id": "AT-001",
+                    "status": "resolved",
+                    "content": "溶解氧低于阈值5.0，当前值: 4.2",
+                    "current_value": "4.2",
+                    "triggered_at": "2026-01-14T11:30:00Z",
+                    "resolved_at": "2026-01-14T12:00:00Z",
+                    "created_at": "2026-01-14T11:30:00Z",
+                    "updated_at": "2026-01-14T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "预警已处理",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "该预警已被处理"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2841,6 +3439,224 @@
             "nullable": true,
             "description": "传感器类型描述",
             "example": "测量水体溶解氧含量"
+          }
+        }
+      },
+      "AlertRuleDetail": {
+        "type": "object",
+        "description": "预警规则详细信息",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "预警规则主键ID",
+            "example": 1
+          },
+          "device_id": {
+            "type": "integer",
+            "description": "设备ID（FK → devices.id）",
+            "example": 1
+          },
+          "device_name": {
+            "type": "string",
+            "description": "设备名称（关联查询）",
+            "example": "一号池溶解氧传感器"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "规则业务ID（唯一标识符，如AT-001）",
+            "example": "AT-001"
+          },
+          "metric": {
+            "type": "string",
+            "description": "检测指标",
+            "enum": ["do", "ph", "temperature", "turbidity", "water_level", "ammonia", "nitrite"],
+            "example": "do"
+          },
+          "severity_level": {
+            "type": "string",
+            "description": "严重级别",
+            "enum": ["info", "warning", "critical"],
+            "example": "critical"
+          },
+          "trigger_condition": {
+            "type": "string",
+            "description": "触发判定",
+            "enum": ["below", "above"],
+            "example": "below"
+          },
+          "threshold": {
+            "type": "string",
+            "description": "报警阈值（字符串格式）",
+            "example": "5.0"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "description": "是否启用",
+            "example": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间",
+            "example": "2026-01-14T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间",
+            "example": "2026-01-14T10:30:00Z"
+          }
+        }
+      },
+      "AlertRuleCreateRequest": {
+        "type": "object",
+        "description": "创建预警规则请求体\n\n**⚠️ 当前仅支持传感器设备**",
+        "required": ["device_id", "metric", "severity_level", "trigger_condition", "threshold"],
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "设备ID（必填，FK → devices.id，必须是传感器设备）",
+            "example": 1
+          },
+          "metric": {
+            "type": "string",
+            "description": "检测指标（必填）",
+            "enum": ["do", "ph", "temperature", "turbidity", "water_level", "ammonia", "nitrite"],
+            "example": "do"
+          },
+          "severity_level": {
+            "type": "string",
+            "description": "严重级别（必填）",
+            "enum": ["info", "warning", "critical"],
+            "example": "critical"
+          },
+          "trigger_condition": {
+            "type": "string",
+            "description": "触发判定（必填，below=低于/above=高于）",
+            "enum": ["below", "above"],
+            "example": "below"
+          },
+          "threshold": {
+            "type": "string",
+            "description": "报警阈值（必填，字符串格式，可参考 /alert-rules/device/{device_id}/metrics 返回的 valid_min/valid_max）",
+            "example": "5.0"
+          }
+        }
+      },
+      "AlertRuleUpdateRequest": {
+        "type": "object",
+        "description": "更新预警规则请求体（支持部分更新）",
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "设备ID",
+            "example": 1
+          },
+          "metric": {
+            "type": "string",
+            "description": "检测指标",
+            "enum": ["do", "ph", "temperature", "turbidity", "water_level", "ammonia", "nitrite"],
+            "example": "do"
+          },
+          "severity_level": {
+            "type": "string",
+            "description": "严重级别",
+            "enum": ["info", "warning", "critical"],
+            "example": "warning"
+          },
+          "trigger_condition": {
+            "type": "string",
+            "description": "触发判定",
+            "enum": ["below", "above"],
+            "example": "below"
+          },
+          "threshold": {
+            "type": "string",
+            "description": "报警阈值",
+            "example": "6.0"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "description": "是否启用",
+            "example": true
+          }
+        }
+      },
+      "AlertNotificationDetail": {
+        "type": "object",
+        "description": "预警通知详细信息",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "预警通知主键ID",
+            "example": 1
+          },
+          "notification_id": {
+            "type": "string",
+            "description": "预警记录业务ID（唯一标识符，如REC-001）",
+            "example": "REC-001"
+          },
+          "alert_rule_id": {
+            "type": "integer",
+            "description": "预警规则ID（FK → alert_rules.id）",
+            "example": 1
+          },
+          "device_id": {
+            "type": "integer",
+            "description": "设备ID（FK → devices.id）",
+            "example": 1
+          },
+          "device_name": {
+            "type": "string",
+            "description": "设备名称（关联查询）",
+            "example": "一号池溶解氧传感器"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "规则业务ID（关联查询）",
+            "example": "AT-001"
+          },
+          "status": {
+            "type": "string",
+            "description": "状态",
+            "enum": ["pending", "resolved"],
+            "example": "pending"
+          },
+          "content": {
+            "type": "string",
+            "description": "预警内容",
+            "example": "溶解氧低于阈值5.0，当前值: 4.2"
+          },
+          "current_value": {
+            "type": "string",
+            "nullable": true,
+            "description": "触发预警时的实际值",
+            "example": "4.2"
+          },
+          "triggered_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "预警触发时间",
+            "example": "2026-01-14T11:30:00Z"
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "解决时间",
+            "example": "2026-01-14T12:00:00Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间",
+            "example": "2026-01-14T11:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间",
+            "example": "2026-01-14T12:00:00Z"
           }
         }
       }

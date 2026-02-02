@@ -189,6 +189,10 @@ class Device(Base):
     camera_images: Mapped[List["CameraImage"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
     camera_health: Mapped[List["CameraHealth"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
 
+    # 预警相关关系
+    alert_rules: Mapped[List["AlertRule"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
+    alert_notifications: Mapped[List["AlertNotification"]] = relationship(back_populates="device", cascade="all, delete-orphan", init=False)
+
 
 class DeviceType(Base):
     """
