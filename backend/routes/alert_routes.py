@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 import logging
 
 from services.alert_service import AlertService
+from utils.auth import token_required
 
 # 创建蓝图
 alert_bp = Blueprint('alert', __name__, url_prefix='/api')
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 # ==================== 预警规则接口 ====================
 
 @alert_bp.route('/alert-rules', methods=['GET'])
+@token_required
 def search_alert_rules():
     """
     搜索预警规则
@@ -87,6 +89,7 @@ def search_alert_rules():
 
 
 @alert_bp.route('/alert-rules', methods=['POST'])
+@token_required
 def create_alert_rule():
     """
     新增预警规则
@@ -206,6 +209,7 @@ def create_alert_rule():
 
 
 @alert_bp.route('/alert-rules/<int:rule_id>', methods=['PUT'])
+@token_required
 def update_alert_rule(rule_id: int):
     """
     修改预警规则
@@ -323,6 +327,7 @@ def update_alert_rule(rule_id: int):
 
 
 @alert_bp.route('/alert-rules/<int:rule_id>', methods=['DELETE'])
+@token_required
 def delete_alert_rule(rule_id: int):
     """
     删除预警规则
@@ -361,6 +366,7 @@ def delete_alert_rule(rule_id: int):
 # ==================== 预警通知接口 ====================
 
 @alert_bp.route('/alert-rules/<int:rule_id>/notifications', methods=['GET'])
+@token_required
 def get_alert_rule_notifications(rule_id: int):
     """
     获取指定规则的预警历史
@@ -431,6 +437,7 @@ def get_alert_rule_notifications(rule_id: int):
 
 
 @alert_bp.route('/alert-notifications/<int:notification_id>/resolve', methods=['POST'])
+@token_required
 def resolve_alert_notification(notification_id: int):
     """
     标记预警为已处理

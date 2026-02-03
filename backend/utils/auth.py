@@ -102,3 +102,76 @@ def auth_required(fn):
     
     return wrapper
 
+
+def token_required(fn):
+    """
+    Token验证装饰器（简化版）
+    只验证Token有效性，不向函数传递用户信息
+    
+    适用于只需要验证用户是否登录，但不需要用户信息的接口
+    可以通过环境变量 ENABLE_AUTH 控制是否启用认证
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            # 检查是否启用认证
+            import os
+            enable_auth = os.getenv('ENABLE_AUTH', 'false').lower() in ('true', '1', 'yes')
+            
+            if not enable_auth:
+                # 未启用认证，直接放行
+                return fn(*args, **kwargs)
+            
+            # 如果启用了认证，验证 Token
+            try:
+                from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+                
+                # 检查 Authorization header
+                auth_header = request.headers.get('Authorization', '')
+                if not auth_header or auth_header in ('Bearer undefined', 'Bearer null', 'Bearer '):
+                    logger.warning(f"Authorization header 无效: {auth_header}")
+                    return jsonify({
+                        "code": 401,
+                        "msg": "未授权：缺少有效的认证令牌",
+                        "data": {}
+                    }), 401
+                
+                # 验证JWT Token
+                verify_jwt_in_request()
+                
+                # 验证用户身份存在
+                user_id = get_jwt_identity()
+                if not user_id:
+                    logger.warning("JWT token 中缺少用户身份信息")
+                    return jsonify({
+                        "code": 401,
+                        "msg": "未授权：缺少用户身份信息",
+                        "data": {}
+                    }), 401
+                
+                logger.debug(f"Token验证成功: user_id={user_id}")
+                return fn(*args, **kwargs)
+                
+            except ImportError:
+                logger.warning("flask_jwt_extended 未安装，跳过Token认证")
+                return fn(*args, **kwargs)
+            
+            except Exception as e:
+                error_msg = str(e)
+                logger.warning(f"Token验证失败: {error_msg}")
+                return jsonify({
+                    "code": 401,
+                    "msg": f"认证失败: {error_msg}",
+                    "data": {}
+                }), 401
+                
+        except Exception as e:
+            logger.error(f"Token验证装饰器错误: {str(e)}", exc_info=True)
+            return jsonify({
+                "code": 500,
+                "msg": f"服务器内部错误: {str(e)}",
+                "data": {}
+            }), 500
+    
+    return wrapper
+

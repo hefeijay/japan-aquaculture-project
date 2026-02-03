@@ -23,7 +23,7 @@ from config.settings import Config, SENSOR_TYPES
 from services.sensor_service import SensorService
 from services.ai_decision_service import AIDecisionService
 from services.pond_service import PondService
-from utils.auth import auth_required
+from utils.auth import auth_required, token_required
 from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument, Device, DeviceType, User
 from db_models.db_session import db_session_factory
 
@@ -1074,6 +1074,7 @@ def get_knowledge_base_list(user_id, role):
 
 #设备管理接口
 @api_bp.route('/get_device_type_list', methods=['GET'])
+@token_required
 def get_device_type_list():
     """
     获取设备类型列表（轻量接口，只返回id、category、name）
@@ -1109,6 +1110,7 @@ def get_device_type_list():
         }), 500
 
 @api_bp.route('/get_sensor_type_list', methods=['GET'])
+@token_required
 def get_sensor_type_list():
     """
     获取传感器类型列表（轻量接口，只返回id和type_name）
@@ -1145,6 +1147,7 @@ def get_sensor_type_list():
         }), 500
 
 @api_bp.route('/get_device_list', methods=['GET'])
+@token_required
 def get_device_list():
     """
     获取设备列表（支持分页和搜索）
@@ -1359,6 +1362,7 @@ def get_device_list():
 
 
 @api_bp.route('/device', methods=['POST'])
+@token_required
 def create_device():
     """
     创建新设备（统一设备表架构）
@@ -1545,6 +1549,7 @@ def create_device():
         }), 500
 
 @api_bp.route('/device/<device_id>', methods=['PUT'])
+@token_required
 def update_device(device_id):
     """
     更新设备信息（支持部分更新）
@@ -1737,6 +1742,7 @@ def update_device(device_id):
         }), 500
 
 @api_bp.route('/device/<device_id>', methods=['DELETE'])
+@token_required
 def delete_device(device_id):
     """
     删除设备（软删除，设置is_deleted字段）
@@ -1798,6 +1804,7 @@ def delete_device(device_id):
 
 
 @api_bp.route('/device/test-connection', methods=['POST'])
+@token_required
 def test_device_connection():
     """
     设备连接测试（统一接口）
@@ -1885,6 +1892,7 @@ def test_device_connection():
 
 
 @api_bp.route('/device/test-connection/supported', methods=['GET'])
+@token_required
 def get_supported_connection_test_categories():
     """
     获取支持连接测试的设备类别列表
