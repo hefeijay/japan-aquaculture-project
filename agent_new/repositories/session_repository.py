@@ -6,6 +6,7 @@
 import json
 import logging
 from typing import Optional
+from datetime import datetime, timezone
 
 from database import get_db
 from models.session import Session
@@ -105,3 +106,69 @@ def update_session_config(session: Session, new_config: dict):
         logger.error(f"更新会话配置失败: {e}", exc_info=True)
         raise
 
+
+def delete_session(session_id: str) -> bool:
+    """
+    删除会话（用于清理空会话）
+    
+    Args:
+        session_id: 会话ID
+        
+    Returns:
+        是否删除成功
+    """
+    try:
+        with get_db() as db:
+            result = db.query(Session).filter_by(session_id=session_id).delete()
+            db.commit()
+            logger.info(f"删除空会话: {session_id}")
+            return result > 0
+    except Exception as e:
+        logger.error(f"删除会话失败: {e}", exc_info=True)
+        return False
+
+
+def update_session_name(session_id: str, session_name: str) -> bool:
+    """
+    更新会话名称
+    
+    Args:
+        session_id: 会话ID
+        session_name: 新的会话名称
+        
+    Returns:
+        是否更新成功
+    """
+    try:
+        with get_db() as db:
+            result = db.query(Session).filter_by(session_id=session_id).update({
+                "session_name": session_name
+            })
+            db.commit()
+            logger.info(f"更新会话名称: {session_id} -> {session_name}")
+            return result > 0
+    except Exception as e:
+        logger.error(f"更新会话名称失败: {e}", exc_info=True)
+        return False
+
+
+def touch_session(session_id: str) -> bool:
+    """
+    更新会话的 updated_at 时间（每次对话时调用）
+    
+    Args:
+        session_id: 会话ID
+        
+    Returns:
+        是否更新成功
+    """
+    try:
+        with get_db() as db:
+            result = db.query(Session).filter_by(session_id=session_id).update({
+                "updated_at": datetime.now(timezone.utc)
+            })
+            db.commit()
+            return result > 0
+    except Exception as e:
+        logger.error(f"更新会话时间失败: {e}", exc_info=True)
+        return False

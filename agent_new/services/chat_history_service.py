@@ -161,3 +161,23 @@ def clear_history(session_id: str) -> int:
         logger.error(f"清除对话历史失败: {e}", exc_info=True)
         return 0
 
+
+def get_message_count(session_id: str) -> int:
+    """
+    获取会话的消息数量（用于判断是否是第一次对话）
+    
+    Args:
+        session_id: 会话ID
+        
+    Returns:
+        int: 消息数量
+    """
+    try:
+        with get_db() as db:
+            count = db.query(ChatHistory).filter(
+                ChatHistory.session_id == session_id
+            ).count()
+            return count
+    except Exception as e:
+        logger.error(f"获取消息数量失败: {e}", exc_info=True)
+        return 0

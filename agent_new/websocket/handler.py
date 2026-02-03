@@ -30,6 +30,8 @@ async def handle_websocket(websocket: WebSocket):
     logger.info(f"WebSocket 连接已建立: {websocket.client}")
     
     session_id = None
+    is_new_empty_session = False  # 是否是本次连接新创建的空会话
+    has_sent_message = False  # 本次连接是否发送过消息
     
     try:
         while True:
@@ -48,7 +50,7 @@ async def handle_websocket(websocket: WebSocket):
                 
                 # 初始化会话
                 if msg_type == MsgType.INIT:
-                    session_id = await _handle_init(websocket, msg_data)
+                    session_id, is_new_empty_session = await _handle_init(websocket, msg_data)
                     continue
                 
                 # 检查会话是否已初始化
@@ -66,6 +68,7 @@ async def handle_websocket(websocket: WebSocket):
                         msg_data=msg_data,
                         message_data=message_data,
                     )
+                    has_sent_message = True  # 标记用户已发送消息
                     
             except json.JSONDecodeError:
                 await _send_error(websocket, "消息格式错误：必须是有效的 JSON")
@@ -75,6 +78,11 @@ async def handle_websocket(websocket: WebSocket):
                 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 连接已断开: {websocket.client}")
+        # 只有当是本次新创建的空会话，且用户没发送任何消息时，才删除
+        if session_id and is_new_empty_session and not has_sent_message:
+            from repositories.session_repository import delete_session
+            delete_session(session_id)
+            logger.info(f"清理空会话: {session_id}")
     except Exception as e:
         logger.error(f"WebSocket 连接错误: {e}", exc_info=True)
         try:
@@ -83,8 +91,14 @@ async def handle_websocket(websocket: WebSocket):
             pass
 
 
-async def _handle_init(websocket: WebSocket, msg_data: dict) -> str:
-    """处理会话初始化"""
+async def _handle_init(websocket: WebSocket, msg_data: dict) -> tuple:
+    """
+    处理会话初始化
+    
+    Returns:
+        tuple: (session_id, is_new_empty_session)
+               is_new_empty_session: 是否是本次新创建的空会话（没有历史消息）
+    """
     init_session_id = msg_data.get("session_id")
     user_id = msg_data.get("user_id", "default_user")
     
@@ -92,15 +106,18 @@ async def _handle_init(websocket: WebSocket, msg_data: dict) -> str:
     init_data = initialize_session(init_session_id, user_id)
     session_id = init_data["session_id"]
     
+    # 判断是否是新创建的空会话（没有历史消息）
+    is_new_empty_session = len(init_data.get("messages", [])) == 0
+    
     # 返回初始化响应
     response = {
         "type": MsgType.INIT_RESPONSE,
         "data": init_data
     }
     await websocket.send_text(json.dumps(response, ensure_ascii=False))
-    logger.info(f"会话初始化完成: {session_id}, 用户: {user_id}")
+    logger.info(f"会话初始化完成: {session_id}, 用户: {user_id}, 新空会话: {is_new_empty_session}")
     
-    return session_id
+    return session_id, is_new_empty_session
 
 
 async def _handle_user_message(

@@ -14,9 +14,11 @@ from core.intent import recognize_intent, needs_expert, is_device_control, is_ca
 from core.query_rewriter import rewrite_query
 from services.expert_consultation_service import expert_service
 from services.device_expert_service import device_expert_service
-from services.chat_history_service import save_message, get_history, format_history_for_llm
+from services.chat_history_service import save_message, get_history, format_history_for_llm, get_message_count
 from services.web_search_service import web_search_service
 from services.weather_service import weather_service
+from services.session_service import generate_session_title
+from repositories.session_repository import touch_session
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,13 @@ class ChatHandler:
         
         # 2. 保存用户消息
         save_message(session_id=session_id, role="user", message=query)
+        
+        # 2.1 检查是否是第一次对话，如果是则异步生成会话标题
+        message_count = get_message_count(session_id)
+        if message_count == 1:  # 刚保存的这条是第一条消息
+            # 异步生成标题，不阻塞主流程
+            asyncio.create_task(generate_session_title(session_id, query))
+            logger.info(f"🏷️ 首次对话，异步生成会话标题")
         
         # 3. 🔥 启动联网搜索任务（并行，不阻塞主流程）
         search_task = asyncio.create_task(web_search_service.search(query))
@@ -134,6 +143,9 @@ class ChatHandler:
             intent=intent,
             metadata=metadata,
         )
+        
+        # 6. 更新 session 的 updated_at 时间
+        touch_session(session_id)
         
         logger.info(f"✅ 完成 | intent={intent}")
         

@@ -764,18 +764,18 @@ def get_session_list(user_id, role):
         JSON格式的会话列表数据
     """
     try:
-        # 从数据库查询该用户的所有会话，按创建时间倒序
+        # 从数据库查询该用户的所有会话，按更新时间倒序（最近活跃的在前）
         with db_session_factory() as session:
             session_list = session.query(Session).filter_by(
                 user_id=user_id
-            ).order_by(Session.created_at.desc()).all()
+            ).order_by(Session.updated_at.desc()).all()
             
             # 构建返回数据
             data = [
                 {
                     "session_name": s.session_name,
                     "session_id": s.session_id,
-                    "timestamp": int(s.created_at.timestamp()) if s.created_at else 0
+                    "timestamp": int(s.updated_at.timestamp()) if s.updated_at else 0
                 }
                 for s in session_list
             ]
@@ -793,6 +793,73 @@ def get_session_list(user_id, role):
             "code": 500,
             "msg": f"服务器内部错误: {str(e)}",
             "data": []
+        }), 500
+
+
+@api_bp.route('/v1/delete_session', methods=['POST'])
+@auth_required
+def delete_session(user_id, role):
+    """
+    删除会话
+    根据 session_id 删除指定会话及其聊天记录
+    
+    Args:
+        user_id: 用户ID（从认证装饰器获取）
+        role: 用户角色（从认证装饰器获取）
+    
+    Request Body:
+        session_id: 要删除的会话ID
+    
+    Returns:
+        JSON格式的操作结果
+    """
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        
+        if not session_id:
+            return jsonify({
+                "code": 400,
+                "msg": "缺少 session_id 参数",
+                "data": None
+            }), 400
+        
+        with db_session_factory() as session:
+            # 查找会话，确保是该用户的会话
+            target_session = session.query(Session).filter_by(
+                session_id=session_id,
+                user_id=user_id
+            ).first()
+            
+            if not target_session:
+                return jsonify({
+                    "code": 404,
+                    "msg": "会话不存在或无权限删除",
+                    "data": None
+                }), 404
+            
+            # 删除该会话的聊天记录
+            from db_models.chat_history import ChatHistory
+            session.query(ChatHistory).filter_by(session_id=session_id).delete()
+            
+            # 删除会话
+            session.delete(target_session)
+            session.commit()
+            
+            logger.info(f"删除会话成功: session_id={session_id}, user_id={user_id}")
+        
+        return jsonify({
+            "code": 200,
+            "msg": "删除成功",
+            "data": None
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"删除会话失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": f"服务器内部错误: {str(e)}",
+            "data": None
         }), 500
 
 

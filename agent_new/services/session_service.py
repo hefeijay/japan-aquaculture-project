@@ -127,3 +127,41 @@ def initialize_session(session_id: Optional[str] = None, user_id: str = "default
     
     return result
 
+
+async def generate_session_title(session_id: str, first_message: str) -> Optional[str]:
+    """
+    使用 LLM 生成会话标题（第一次对话时调用）
+    
+    Args:
+        session_id: 会话ID
+        first_message: 用户的第一条消息
+        
+    Returns:
+        生成的标题，失败返回 None
+    """
+    from core.llm import llm_manager
+    from repositories.session_repository import update_session_name
+    
+    try:
+        # messages = [
+        #     {
+        #         "role": "system",
+        #         "content": "你是一个标题生成助手。请根据用户的问题生成一个简短的对话标题（10-20个字），不要使用引号或特殊符号，直接输出标题内容。"
+        #     },
+        #     {
+        #         "role": "user",
+        #         "content": f"请为以下问题生成对话标题：\n{first_message}"
+        #     }
+        # ]
+        
+        # title = await llm_manager.invoke(messages=messages, max_tokens=50)
+        # title = title.strip()[:50]  # 限制长度
+        title = first_message.strip()[:10]
+        if title:
+            update_session_name(session_id, title)
+            logger.info(f"生成会话标题: session_id={session_id}, title={title}")
+            return title
+        return None
+    except Exception as e:
+        logger.error(f"生成会话标题失败: {e}", exc_info=True)
+        return None
