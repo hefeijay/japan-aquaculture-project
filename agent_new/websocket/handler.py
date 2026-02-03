@@ -12,7 +12,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from core.constants import MsgType
 from core.handler import chat_handler
 from services.chat_history_service import get_history, format_history_for_llm
-from services.session_service import initialize_session
+from services.session_service import initialize_session, generate_session_title
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +171,7 @@ async def _handle_user_message(
         assistant_content += chunk
         await _send_stream_event(websocket, session_id, assistant_message_id, assistant_timestamp, "content", chunk)
     
+    is_first_message = False
     try:
         # 调用核心处理器
         result = await chat_handler.process(
@@ -185,6 +186,9 @@ async def _handle_user_message(
             assistant_content = result["response"]
             await _send_stream_event(websocket, session_id, assistant_message_id, assistant_timestamp, "content", assistant_content)
         
+        # 获取是否是首次对话的标志
+        is_first_message = result.get("is_first_message", False)
+        
     except Exception as e:
         logger.error(f"处理用户消息失败: {e}", exc_info=True)
         error_msg = f"抱歉，处理您的问题时发生错误：{str(e)}"
@@ -193,6 +197,24 @@ async def _handle_user_message(
     
     # 发送流式结束事件
     await _send_stream_event(websocket, session_id, assistant_message_id, int(datetime.now().timestamp()), "end", "")
+    
+    # 如果是首次对话，生成会话标题并推送给前端
+    if is_first_message:
+        try:
+            session_name = await generate_session_title(session_id, user_message)
+            if session_name:
+                # 推送会话名称更新消息
+                name_update_response = {
+                    "type": MsgType.SESSION_NAME_UPDATED,
+                    "data": {
+                        "session_id": session_id,
+                        "session_name": session_name
+                    }
+                }
+                await websocket.send_text(json.dumps(name_update_response, ensure_ascii=False))
+                logger.info(f"🏷️ 推送会话标题更新: {session_id} -> {session_name}")
+        except Exception as e:
+            logger.error(f"生成或推送会话标题失败: {e}", exc_info=True)
 
 
 async def _send_stream_event(

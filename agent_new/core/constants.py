@@ -41,4 +41,5 @@ class MsgType:
     STREAM_END = "stream_end"  # 流式输出结束事件
     UPDATE_CONFIG_ACK = "updateConfig_ack"
     GET_SESSION_TOPIC_RESPONSE = "getSessionTopicResponse"
+    SESSION_NAME_UPDATED = "sessionNameUpdated"  # 会话名称更新通知
 
