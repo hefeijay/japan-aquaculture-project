@@ -796,7 +796,7 @@ def get_session_list(user_id, role):
         }), 500
 
 
-@api_bp.route('/v1/delete_session', methods=['POST'])
+@api_bp.route('/delete_session', methods=['POST']) 
 @auth_required
 def delete_session(user_id, role):
     """

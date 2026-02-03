@@ -156,7 +156,7 @@ async def generate_session_title(session_id: str, first_message: str) -> Optiona
         
         # title = await llm_manager.invoke(messages=messages, max_tokens=50)
         # title = title.strip()[:50]  # 限制长度
-        title = first_message.strip()[:10]
+        title = first_message.strip()[:20]
         if title:
             update_session_name(session_id, title)
             logger.info(f"生成会话标题: session_id={session_id}, title={title}")
