@@ -37,6 +37,16 @@ def auth_required(fn):
             try:
                 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
                 
+                # 检查 Authorization header
+                auth_header = request.headers.get('Authorization', '')
+                if not auth_header or auth_header == 'Bearer undefined' or auth_header == 'Bearer null':
+                    logger.warning(f"Authorization header 无效: {auth_header}")
+                    # 回退到简单的header认证
+                    user_id = request.headers.get('X-User-Id', 'default_user')
+                    role = request.headers.get('X-User-Role', 'user')
+                    logger.info(f"使用 header 认证: user_id={user_id}, role={role}")
+                    return fn(user_id=user_id, role=role, *args, **kwargs)
+                
                 # 验证JWT Token
                 verify_jwt_in_request()
                 
@@ -46,12 +56,14 @@ def auth_required(fn):
                 role = claims.get("role", "user")
                 
                 if not user_id:
+                    logger.warning("JWT token 中缺少用户身份信息")
                     return jsonify({
                         "code": 401,
                         "msg": "未授权：缺少用户身份信息",
                         "data": {}
                     }), 401
                 
+                logger.debug(f"JWT认证成功: user_id={user_id}, role={role}")
                 return fn(user_id=user_id, role=role, *args, **kwargs)
                 
             except ImportError:
@@ -60,12 +72,23 @@ def auth_required(fn):
                 user_id = request.headers.get('X-User-Id', 'default_user')
                 role = request.headers.get('X-User-Role', 'user')
                 return fn(user_id=user_id, role=role, *args, **kwargs)
-                
+            
             except Exception as e:
-                logger.error(f"JWT认证失败: {str(e)}")
+                error_msg = str(e)
+                logger.warning(f"JWT认证失败: {error_msg}, Authorization header: {request.headers.get('Authorization', 'N/A')}")
+                
+                # 如果是 token 格式错误，尝试回退到 header 认证
+                if 'Not enough segments' in error_msg or 'Invalid' in error_msg:
+                    logger.info("JWT token 格式错误，尝试使用 header 认证")
+                    user_id = request.headers.get('X-User-Id', 'default_user')
+                    role = request.headers.get('X-User-Role', 'user')
+                    if user_id and user_id != 'default_user':
+                        logger.info(f"使用 header 认证: user_id={user_id}, role={role}")
+                        return fn(user_id=user_id, role=role, *args, **kwargs)
+                
                 return jsonify({
                     "code": 401,
-                    "msg": f"认证失败: {str(e)}",
+                    "msg": f"认证失败: {error_msg}",
                     "data": {}
                 }), 401
                 

@@ -205,7 +205,7 @@ def login():
             }
             
             if token:
-                response_data["token"] = token
+                response_data["access_token"] = token
             
             logger.info(f"用户 {username} 登录成功")
             return jsonify({
@@ -768,14 +768,14 @@ def get_session_list(user_id, role):
         with db_session_factory() as session:
             session_list = session.query(Session).filter_by(
                 user_id=user_id
-            ).order_by(Session.create_at.desc()).all()
+            ).order_by(Session.created_at.desc()).all()
             
             # 构建返回数据
             data = [
                 {
                     "session_name": s.session_name,
                     "session_id": s.session_id,
-                    "timestamp": int(s.create_at.timestamp()) if s.create_at else 0
+                    "timestamp": int(s.created_at.timestamp()) if s.created_at else 0
                 }
                 for s in session_list
             ]

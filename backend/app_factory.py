@@ -65,6 +65,32 @@ def create_app(config_class=Config):
     # 配置CORS
     CORS(app)  # 允许跨域请求
     
+    # 配置JWT（如果启用了认证）
+    enable_auth = os.getenv('ENABLE_AUTH', 'false').lower() in ('true', '1', 'yes')
+    if enable_auth:
+        try:
+            from flask_jwt_extended import JWTManager
+            from datetime import timedelta
+            
+            # JWT配置
+            jwt_secret_key = os.getenv('JWT_SECRET_KEY', 'change-this-secret-key-in-production')
+            app.config['JWT_SECRET_KEY'] = jwt_secret_key
+            app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)  # token过期时间，24小时
+            app.config['JWT_TOKEN_LOCATION'] = ['headers']  # 从请求头获取token
+            app.config['JWT_HEADER_NAME'] = 'Authorization'  # 请求头名称
+            app.config['JWT_HEADER_TYPE'] = 'Bearer'  # token类型
+            
+            # 初始化JWT
+            jwt = JWTManager(app)
+            logger = logging.getLogger(__name__)
+            logger.info("JWT认证已启用")
+        except ImportError:
+            logger = logging.getLogger(__name__)
+            logger.warning("flask_jwt_extended 未安装，JWT认证未启用")
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"JWT初始化失败: {str(e)}", exc_info=True)
+    
     # 配置日志
     logging.basicConfig(level=getattr(logging, config_class.LOG_LEVEL))
     logger = logging.getLogger(__name__)
