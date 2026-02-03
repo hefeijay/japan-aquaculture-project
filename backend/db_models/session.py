@@ -24,7 +24,7 @@ class Session(Base):
         TEXT(charset="utf8mb4", collation="utf8mb4_unicode_ci")
     )
     status: Mapped[Optional[str]] = mapped_column(String(50),default="deactive")
-    create_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP,default=datetime.now(timezone.utc))
+    created_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP,default=datetime.now(timezone.utc))
     session_name: Mapped[str] = mapped_column(String(128),default="new chat")
     summary: Mapped[Optional[str]] = mapped_column(String(2048), default=None)
     updated_at: Mapped[Optional[TIMESTAMP]] = mapped_column(TIMESTAMP,default=datetime.now(timezone.utc),onupdate=datetime.now(timezone.utc))
