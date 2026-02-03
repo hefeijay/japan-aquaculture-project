@@ -874,7 +874,6 @@ def generate_mock_data():
                         hours=random.randint(0, 23),
                         minutes=random.randint(0, 59)
                     )
-                    
                     # 根据规则生成预警内容和当前值
                     if rule.metric == "do":
                         current_val = round(random.uniform(3.5, 4.9), 2)
