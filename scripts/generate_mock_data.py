@@ -27,11 +27,17 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from app_factory import create_app
+from config.settings import Config
 from db_models import (
     db, Pond, Batch, DeviceType, SensorType, Device, 
     SensorReading, FeederLog, CameraImage, CameraHealth, User,
     AlertRule, AlertNotification
 )
+
+
+def get_local_timezone():
+    """获取本地时区（从配置中读取）"""
+    return timezone(timedelta(hours=Config.LOCAL_TIMEZONE_OFFSET))
 
 
 # ==================== 可配置参数 ====================
@@ -612,7 +618,7 @@ def generate_mock_data():
                 reading.metric = metric
                 reading.recorded_at = current_time
                 reading.ts_utc = current_time
-                reading.ts_local = current_time.astimezone(timezone(timedelta(hours=9)))  # 日本时区
+                reading.ts_local = current_time.astimezone(get_local_timezone())
                 reading.quality_flag = "ok" if random.random() > 0.05 else random.choice(["missing", "anomaly"])
                 
                 db.session.add(reading)
@@ -656,7 +662,7 @@ def generate_mock_data():
                     )
                     # 设置其他字段（这些字段设置了 init=False）
                     log.batch_id = batch.id if batch else None
-                    log.ts_local = feed_time.astimezone(timezone(timedelta(hours=9)))
+                    log.ts_local = feed_time.astimezone(get_local_timezone())
                     log.feed_amount_g = Decimal(str(feed_amount))
                     log.run_time_s = run_time
                     log.leftover_estimate_g = Decimal(str(leftover))
@@ -707,7 +713,7 @@ def generate_mock_data():
                     # 设置其他字段（这些字段设置了 init=False）
                     image.batch_id = batch.id if batch else None
                     image.storage_uri = f"images/{device.device_id}/{img_time.strftime('%Y%m%d_%H%M%S')}.jpg"
-                    image.ts_local = img_time.astimezone(timezone(timedelta(hours=9)))
+                    image.ts_local = img_time.astimezone(get_local_timezone())
                     image.quality_flag = "ok" if random.random() > 0.05 else "anomaly"
                     
                     db.session.add(image)
@@ -842,7 +848,9 @@ def generate_mock_data():
                 rule.check_interval_unit = rule_config["check_interval_unit"]
                 rule.is_enabled = True
                 # 设置上次检查时间（模拟调度器已运行）
-                rule.last_checked_at = datetime.now(timezone.utc) - timedelta(minutes=random.randint(1, 30))
+                last_check_time = datetime.now(timezone.utc) - timedelta(minutes=random.randint(1, 30))
+                rule.last_checked_at = last_check_time
+                rule.last_checked_at_local = last_check_time.astimezone(get_local_timezone())
                 
                 db.session.add(rule)
                 db.session.flush()
@@ -900,11 +908,14 @@ def generate_mock_data():
                     )
                     # 设置其他字段（init=False 的字段）
                     notification.current_value = str(current_val)
+                    notification.triggered_at_local = triggered_time.astimezone(get_local_timezone())
                     
                     # 随机设置状态（70%待处理，30%已解决）
                     if random.random() > 0.7:
                         notification.status = "resolved"
-                        notification.resolved_at = triggered_time + timedelta(hours=random.randint(1, 24))
+                        resolved_time = triggered_time + timedelta(hours=random.randint(1, 24))
+                        notification.resolved_at = resolved_time
+                        notification.resolved_at_local = resolved_time.astimezone(get_local_timezone())
                     else:
                         notification.status = "pending"
                     

@@ -228,6 +228,11 @@ class Config:
     # 传感器实时数据配置（可通过环境变量覆盖）
     SENSOR_REALTIME_LIMIT = int(os.getenv('SENSOR_REALTIME_LIMIT', '24'))  # 每个 metric 获取的最新记录数，默认24条
     
+    # ==================== 时区配置 ====================
+    # 本地时区偏移量（小时），默认为日本时区 UTC+9
+    # 可通过环境变量 LOCAL_TIMEZONE_OFFSET 覆盖
+    LOCAL_TIMEZONE_OFFSET = int(os.getenv('LOCAL_TIMEZONE_OFFSET', '9'))
+    
     # ==================== 预警调度配置 ====================
     # 防抖时间（秒）：同一规则在此时间内不重复预警
     ALERT_DEBOUNCE_SECONDS = int(os.getenv('ALERT_DEBOUNCE_SECONDS', '300'))

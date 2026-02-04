@@ -16,6 +16,11 @@ from config.settings import Config
 logger = logging.getLogger(__name__)
 
 
+def get_local_timezone():
+    """获取本地时区（从配置中读取）"""
+    return timezone(timedelta(hours=Config.LOCAL_TIMEZONE_OFFSET))
+
+
 class AlertCheckService:
     """预警检查服务 - 执行实际的阈值检查和预警触发"""
     
@@ -56,7 +61,9 @@ class AlertCheckService:
                 if not latest_reading:
                     logger.debug(f"设备 {rule.device_id} 无传感器数据，跳过检查")
                     # 仍然更新检查时间
-                    rule.last_checked_at = datetime.now(timezone.utc)
+                    now_utc = datetime.now(timezone.utc)
+                    rule.last_checked_at = now_utc
+                    rule.last_checked_at_local = now_utc.astimezone(get_local_timezone())
                     session.commit()
                     return
                 
@@ -94,7 +101,9 @@ class AlertCheckService:
                     cls._auto_resolve_alerts(session, rule, current_value)
                 
                 # ========== 6. 更新检查时间（放在最后，避免影响版本验证） ==========
-                rule.last_checked_at = datetime.now(timezone.utc)
+                check_time_utc = datetime.now(timezone.utc)
+                rule.last_checked_at = check_time_utc
+                rule.last_checked_at_local = check_time_utc.astimezone(get_local_timezone())
                 
                 session.commit()
                 
@@ -173,15 +182,20 @@ class AlertCheckService:
         condition_text = "低于" if rule.trigger_condition == 'below' else "高于"
         content = f"{rule.metric} {condition_text}阈值 {rule.threshold}，当前值: {current_value}"
         
+        # 获取当前时间（UTC 和本地时间）
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_utc.astimezone(get_local_timezone())
+        
         # 创建通知记录
         notification = AlertNotification(
             notification_id=notification_id,
             alert_rule_id=rule.id,
             device_id=rule.device_id,
             content=content,
-            triggered_at=datetime.now(timezone.utc)
+            triggered_at=now_utc
         )
         notification.current_value = str(current_value)
+        notification.triggered_at_local = now_local
         
         session.add(notification)
         
@@ -208,12 +222,14 @@ class AlertCheckService:
         if not pending_alerts:
             return
         
-        now = datetime.now(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_utc.astimezone(get_local_timezone())
         resolved_count = 0
         
         for alert in pending_alerts:
             alert.status = 'resolved'
-            alert.resolved_at = now
+            alert.resolved_at = now_utc
+            alert.resolved_at_local = now_local
             # 追加恢复信息到内容
             alert.content = f"{alert.content} [自动恢复: 指标已恢复正常，当前值: {current_value}]"
             resolved_count += 1

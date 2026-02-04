@@ -6,7 +6,7 @@
 """
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (
     String,
@@ -90,17 +90,31 @@ class AlertNotification(Base):
         init=False
     )
 
-    # 预警触发时间
+    # 预警触发时间（UTC）
     triggered_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=False,
-        comment="预警触发时间"
+        comment="预警触发时间（UTC）"
     )
 
-    # 解决时间
+    # 预警触发时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置）
+    triggered_at_local: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP,
+        comment="预警触发时间（本地时间）",
+        init=False
+    )
+
+    # 解决时间（UTC）
     resolved_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP,
-        comment="解决时间",
+        comment="解决时间（UTC）",
+        init=False
+    )
+
+    # 解决时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置）
+    resolved_at_local: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP,
+        comment="解决时间（本地时间）",
         init=False
     )
 

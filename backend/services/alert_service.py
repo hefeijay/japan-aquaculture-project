@@ -6,8 +6,15 @@
 """
 
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import logging
+
+from config.settings import Config
+
+
+def get_local_timezone():
+    """获取本地时区（从配置中读取）"""
+    return timezone(timedelta(hours=Config.LOCAL_TIMEZONE_OFFSET))
 
 from sqlalchemy import or_, desc, and_
 from sqlalchemy.orm import Session
@@ -545,8 +552,11 @@ class AlertService:
                     raise ValueError("该预警已被处理")
                 
                 # 更新状态
+                now_utc = datetime.now(timezone.utc)
+                now_local = now_utc.astimezone(get_local_timezone())
                 notification.status = 'resolved'
-                notification.resolved_at = datetime.utcnow()
+                notification.resolved_at = now_utc
+                notification.resolved_at_local = now_local
                 
                 session.commit()
                 session.refresh(notification)
@@ -583,6 +593,7 @@ class AlertService:
             "check_interval_unit": rule.check_interval_unit,
             "is_enabled": rule.is_enabled,
             "last_checked_at": rule.last_checked_at.isoformat() if rule.last_checked_at else None,
+            "last_checked_at_local": rule.last_checked_at_local.isoformat() if rule.last_checked_at_local else None,
             "created_at": rule.created_at.isoformat() if rule.created_at else None,
             "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
         }
@@ -606,7 +617,9 @@ class AlertService:
             "content": notification.content,
             "current_value": notification.current_value,
             "triggered_at": notification.triggered_at.isoformat() if notification.triggered_at else None,
+            "triggered_at_local": notification.triggered_at_local.isoformat() if notification.triggered_at_local else None,
             "resolved_at": notification.resolved_at.isoformat() if notification.resolved_at else None,
+            "resolved_at_local": notification.resolved_at_local.isoformat() if notification.resolved_at_local else None,
             "created_at": notification.created_at.isoformat() if notification.created_at else None,
             "updated_at": notification.updated_at.isoformat() if notification.updated_at else None
         }

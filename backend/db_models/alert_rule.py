@@ -114,11 +114,19 @@ class AlertRule(Base):
         init=False
     )
 
-    # 上次检查时间（调度器执行检查时更新）
+    # 上次检查时间（UTC，调度器执行检查时更新）
     last_checked_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP,
         nullable=True,
-        comment="上次检查时间",
+        comment="上次检查时间（UTC）",
+        init=False
+    )
+
+    # 上次检查时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置）
+    last_checked_at_local: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP,
+        nullable=True,
+        comment="上次检查时间（本地时间）",
         init=False
     )
 

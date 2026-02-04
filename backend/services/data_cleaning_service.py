@@ -10,27 +10,34 @@ from datetime import datetime, timezone, timedelta
 import hashlib
 import logging
 
+from config.settings import Config
+
 logger = logging.getLogger(__name__)
 
 
 class DataCleaningService:
     """数据清洗服务类"""
     
-    # 日本时区（UTC+9）
-    JAPAN_TZ = timezone(offset=timedelta(hours=9))
+    @staticmethod
+    def get_local_timezone() -> timezone:
+        """获取本地时区（从配置中读取）"""
+        return timezone(offset=timedelta(hours=Config.LOCAL_TIMEZONE_OFFSET))
     
     @staticmethod
-    def standardize_time(ts: Any, timezone_offset: int = 9) -> Tuple[datetime, datetime]:
+    def standardize_time(ts: Any, timezone_offset: Optional[int] = None) -> Tuple[datetime, datetime]:
         """
         时间标准化：返回UTC和本地时间
         
         Args:
             ts: 时间戳（可以是datetime对象、Unix时间戳毫秒、字符串等）
-            timezone_offset: 时区偏移（小时），默认9（日本时区）
+            timezone_offset: 时区偏移（小时），默认从 Config.LOCAL_TIMEZONE_OFFSET 读取
             
         Returns:
             Tuple[datetime, datetime]: (UTC时间, 本地时间)
         """
+        # 如果未指定时区偏移，从配置读取
+        if timezone_offset is None:
+            timezone_offset = Config.LOCAL_TIMEZONE_OFFSET
         try:
             # 如果已经是datetime对象
             if isinstance(ts, datetime):
@@ -61,9 +68,9 @@ class DataCleaningService:
                 # 默认使用当前时间
                 ts_utc = datetime.now(timezone.utc)
             
-            # 转换为本地时间（日本时区）
-            japan_tz = timezone(offset=timedelta(hours=timezone_offset))
-            ts_local = ts_utc.astimezone(japan_tz)
+            # 转换为本地时间
+            local_tz = timezone(offset=timedelta(hours=timezone_offset))
+            ts_local = ts_utc.astimezone(local_tz)
             
             return ts_utc, ts_local
             
@@ -71,8 +78,8 @@ class DataCleaningService:
             logger.error(f"时间标准化失败: {str(e)}")
             # 返回当前时间
             now_utc = datetime.now(timezone.utc)
-            japan_tz = timezone(offset=timedelta(hours=timezone_offset))
-            return now_utc, now_utc.astimezone(japan_tz)
+            local_tz = timezone(offset=timedelta(hours=timezone_offset))
+            return now_utc, now_utc.astimezone(local_tz)
     
     @staticmethod
     def normalize_unit(value: float, from_unit: str, to_unit: str) -> float:
