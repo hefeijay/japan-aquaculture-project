@@ -2387,6 +2387,157 @@
         }
       }
     },
+    "/alert-notifications": {
+      "get": {
+        "tags": ["设备预警"],
+        "summary": "获取所有预警通知列表",
+        "description": "获取所有预警通知列表，支持按状态、设备、规则筛选，支持分页。按更新时间倒序排列（最新的在最上面）。",
+        "operationId": "getAllAlertNotifications",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "按状态筛选（pending=待处理/resolved=已解决）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "resolved"]
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "description": "按设备ID筛选",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "description": "按规则主键ID筛选",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（从1开始）",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取预警通知列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AlertNotificationDetail"
+                          }
+                        },
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 1,
+                        "notification_id": "REC-001",
+                        "alert_rule_id": 1,
+                        "device_id": 1,
+                        "device_name": "一号池溶解氧传感器",
+                        "rule_id": "AT-001",
+                        "status": "pending",
+                        "content": "溶解氧低于阈值5.0，当前值: 4.2",
+                        "current_value": "4.2",
+                        "triggered_at": "2026-01-14T11:30:00Z",
+                        "resolved_at": null,
+                        "created_at": "2026-01-14T11:30:00Z",
+                        "updated_at": "2026-01-14T11:30:00Z"
+                      },
+                      {
+                        "id": 2,
+                        "notification_id": "REC-002",
+                        "alert_rule_id": 2,
+                        "device_id": 2,
+                        "device_name": "一号池温度传感器",
+                        "rule_id": "AT-002",
+                        "status": "resolved",
+                        "content": "温度高于阈值30.0，当前值: 31.5",
+                        "current_value": "31.5",
+                        "triggered_at": "2026-01-14T10:00:00Z",
+                        "resolved_at": "2026-01-14T10:30:00Z",
+                        "created_at": "2026-01-14T10:00:00Z",
+                        "updated_at": "2026-01-14T10:30:00Z"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "page_size": 20,
+                      "total": 2,
+                      "total_pages": 1,
+                      "has_next": false,
+                      "has_prev": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/alert-notifications/{notification_id}/resolve": {
       "post": {
         "tags": ["设备预警"],

@@ -408,6 +408,76 @@ class AlertService:
             raise
     
     @classmethod
+    def get_all_notifications(
+        cls,
+        status: Optional[str] = None,
+        device_id: Optional[int] = None,
+        rule_id: Optional[int] = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        获取所有预警通知列表
+        
+        Args:
+            status: 状态筛选（pending/resolved）
+            device_id: 设备ID筛选
+            rule_id: 规则主键ID筛选
+            page: 页码
+            page_size: 每页数量
+            
+        Returns:
+            (通知列表, 分页信息)
+        """
+        try:
+            with db_session_factory() as session:
+                # 基础查询，关联设备和规则
+                query = session.query(AlertNotification, Device, AlertRule).outerjoin(
+                    Device, AlertNotification.device_id == Device.id
+                ).outerjoin(
+                    AlertRule, AlertNotification.alert_rule_id == AlertRule.id
+                )
+                
+                # 筛选条件
+                if status:
+                    query = query.filter(AlertNotification.status == status)
+                
+                if device_id:
+                    query = query.filter(AlertNotification.device_id == device_id)
+                
+                if rule_id:
+                    query = query.filter(AlertNotification.alert_rule_id == rule_id)
+                
+                # 计算总数
+                total = query.count()
+                
+                # 分页，按更新时间倒序（最新的在最上面）
+                offset = (page - 1) * page_size
+                results = query.order_by(desc(AlertNotification.updated_at)).offset(offset).limit(page_size).all()
+                
+                # 构建返回数据
+                items = []
+                for notification, device, rule in results:
+                    items.append(cls._format_notification(notification, device, rule))
+                
+                # 分页信息
+                total_pages = (total + page_size - 1) // page_size
+                pagination = {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
+                
+                return items, pagination
+                
+        except Exception as e:
+            logger.error(f"获取所有预警通知失败: {str(e)}", exc_info=True)
+            raise
+    
+    @classmethod
     def resolve_notification(cls, notification_pk_id: int) -> Dict[str, Any]:
         """
         标记预警通知为已处理

@@ -365,6 +365,71 @@ def delete_alert_rule(rule_id: int):
 
 # ==================== 预警通知接口 ====================
 
+@alert_bp.route('/alert-notifications', methods=['GET'])
+@token_required
+def get_all_alert_notifications():
+    """
+    获取所有预警通知列表
+    
+    Query Parameters:
+        - status: 状态筛选（pending/resolved）
+        - device_id: 设备ID筛选
+        - rule_id: 规则主键ID筛选
+        - page: 页码（默认1）
+        - page_size: 每页数量（默认20）
+    
+    Returns:
+        JSON格式的预警通知列表和分页信息
+    """
+    try:
+        # 获取查询参数
+        status = request.args.get('status')
+        device_id = request.args.get('device_id', type=int)
+        rule_id = request.args.get('rule_id', type=int)
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 20, type=int)
+        
+        # 校验状态值
+        if status and status not in ['pending', 'resolved']:
+            return jsonify({
+                "code": 400,
+                "message": "无效的状态值，可选值: pending, resolved",
+                "data": None
+            }), 400
+        
+        # 参数校验
+        if page < 1:
+            page = 1
+        if page_size < 1 or page_size > 100:
+            page_size = 20
+        
+        # 调用服务
+        items, pagination = AlertService.get_all_notifications(
+            status=status,
+            device_id=device_id,
+            rule_id=rule_id,
+            page=page,
+            page_size=page_size
+        )
+        
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": {
+                "items": items,
+                "pagination": pagination
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取所有预警通知失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": None
+        }), 500
+
+
 @alert_bp.route('/alert-rules/<int:rule_id>/notifications', methods=['GET'])
 @token_required
 def get_alert_rule_notifications(rule_id: int):
