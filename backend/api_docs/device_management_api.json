@@ -3685,6 +3685,13 @@
             "description": "是否启用",
             "example": true
           },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "上次检查时间（调度器执行检查时更新）",
+            "example": "2026-01-14T10:35:00Z"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",

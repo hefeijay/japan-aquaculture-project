@@ -244,8 +244,15 @@ class AlertService:
                 session.commit()
                 session.refresh(rule)
                 
+                result = cls._format_rule(rule, device)
+                
+                # 同步调度器：添加定时检查任务
+                from services.alert_scheduler_service import AlertSchedulerService
+                if AlertSchedulerService.is_initialized():
+                    AlertSchedulerService.add_or_update_job(result)
+                
                 logger.info(f"创建预警规则成功: {rule_id}")
-                return cls._format_rule(rule, device)
+                return result
                 
         except ValueError as e:
             # 业务验证错误（设备不存在、规则冲突等），不打印堆栈
@@ -275,6 +282,11 @@ class AlertService:
                 if not rule:
                     raise ValueError(f"预警规则不存在: {rule_pk_id}")
                 
+                # 记录修改前的状态（用于判断是否需要同步调度器）
+                old_is_enabled = rule.is_enabled
+                old_check_interval = rule.check_interval
+                old_check_interval_unit = rule.check_interval_unit
+                
                 # 允许更新的字段
                 allowed_fields = ['device_id', 'metric', 'severity_level', 'trigger_condition', 'threshold', 'check_interval', 'check_interval_unit', 'is_enabled']
                 
@@ -288,8 +300,35 @@ class AlertService:
                 # 获取设备信息
                 device = session.query(Device).filter(Device.id == rule.device_id).first()
                 
+                result = cls._format_rule(rule, device)
+                
+                # 同步调度器
+                from services.alert_scheduler_service import AlertSchedulerService
+                if AlertSchedulerService.is_initialized():
+                    # 检查是否修改了启用状态
+                    new_is_enabled = kwargs.get('is_enabled')
+                    if new_is_enabled is not None and new_is_enabled != old_is_enabled:
+                        if new_is_enabled:
+                            # 规则被启用，添加或恢复任务
+                            AlertSchedulerService.add_or_update_job(result)
+                        else:
+                            # 规则被禁用，暂停任务
+                            AlertSchedulerService.pause_job(rule_pk_id)
+                    
+                    # 检查是否修改了检查间隔（且规则是启用状态）
+                    new_check_interval = kwargs.get('check_interval')
+                    new_check_interval_unit = kwargs.get('check_interval_unit')
+                    interval_changed = (
+                        (new_check_interval is not None and new_check_interval != old_check_interval) or
+                        (new_check_interval_unit is not None and new_check_interval_unit != old_check_interval_unit)
+                    )
+                    
+                    if interval_changed and rule.is_enabled:
+                        # 检查间隔变更且规则启用，更新任务
+                        AlertSchedulerService.add_or_update_job(result)
+                
                 logger.info(f"更新预警规则成功: {rule.rule_id}")
-                return cls._format_rule(rule, device)
+                return result
                 
         except ValueError as e:
             logger.warning(f"更新预警规则失败: {str(e)}")
@@ -310,6 +349,11 @@ class AlertService:
             删除的规则信息
         """
         try:
+            # 先从调度器移除任务（即使任务正在执行也不影响）
+            from services.alert_scheduler_service import AlertSchedulerService
+            if AlertSchedulerService.is_initialized():
+                AlertSchedulerService.remove_job(rule_pk_id)
+            
             with db_session_factory() as session:
                 rule = session.query(AlertRule).filter(AlertRule.id == rule_pk_id).first()
                 
@@ -538,6 +582,7 @@ class AlertService:
             "check_interval": rule.check_interval,
             "check_interval_unit": rule.check_interval_unit,
             "is_enabled": rule.is_enabled,
+            "last_checked_at": rule.last_checked_at.isoformat() if rule.last_checked_at else None,
             "created_at": rule.created_at.isoformat() if rule.created_at else None,
             "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
         }

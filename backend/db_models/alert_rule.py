@@ -114,6 +114,14 @@ class AlertRule(Base):
         init=False
     )
 
+    # 上次检查时间（调度器执行检查时更新）
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP,
+        nullable=True,
+        comment="上次检查时间",
+        init=False
+    )
+
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,

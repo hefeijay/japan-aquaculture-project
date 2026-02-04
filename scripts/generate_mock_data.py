@@ -34,6 +34,11 @@ from db_models import (
 )
 
 
+# ==================== 可配置参数 ====================
+# 每个传感器设备生成的读数条数
+SENSOR_READINGS_PER_DEVICE = 5
+# ====================================================
+
 # 8种传感器类型配置（匹配数据库表结构）
 SENSOR_TYPES_CONFIG = [
     {
@@ -571,52 +576,47 @@ def generate_mock_data():
         print(f"  ✓ 创建摄像头设备: {len(camera_devices)} 个")
         print(f"  ✓ 创建其他设备: {len(other_devices)} 个")
         
-        # 6. 生成传感器读数（最近30天，每小时1条）
-        print("\n[6/9] 生成传感器读数...")
+        # 6. 生成传感器读数（每个设备生成 SENSOR_READINGS_PER_DEVICE 条，时间分散）
+        print(f"\n[6/9] 生成传感器读数（每设备 {SENSOR_READINGS_PER_DEVICE} 条）...")
         reading_count = 0
         end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(days=30)
         
         for device in sensor_devices:
             if device.sensor_type is None:
                 continue
             
             metric = device.sensor_type.metric
-            current_time = start_time
             
-            # 为每个设备生成最近30天的数据，每小时1条
-            while current_time <= end_time:
-                # 随机跳过一些时间点，模拟真实采集
-                if random.random() > 0.05:  # 95%的数据点
-                    value = generate_sensor_value(metric, current_time)
-                    
-                    # 随机选择一个批次
-                    batch = random.choice(batches) if batches else None
-                    
-                    # 创建对象，只传递可以在构造函数中使用的字段
-                    reading = SensorReading(
-                        device_id=device.id,
-                        pond_id=device.pond_id,
-                        value=value
-                    )
-                    # 设置其他字段（这些字段设置了 init=False）
-                    reading.batch_id = batch.id if batch else None
-                    reading.unit = device.sensor_type.unit
-                    reading.metric = metric
-                    reading.recorded_at = current_time
-                    reading.ts_utc = current_time
-                    reading.ts_local = current_time.astimezone(timezone(timedelta(hours=9)))  # 日本时区
-                    reading.quality_flag = "ok" if random.random() > 0.05 else random.choice(["missing", "anomaly"])
-                    
-                    db.session.add(reading)
-                    reading_count += 1
-                    
-                    # 每1000条提交一次
-                    if reading_count % 1000 == 0:
-                        db.session.commit()
-                        print(f"  ✓ 已生成 {reading_count} 条传感器读数...")
+            # 为每个设备生成指定条数的数据，时间分散在最近24小时内
+            for i in range(SENSOR_READINGS_PER_DEVICE):
+                # 计算时间间隔，使读数均匀分布在最近24小时内
+                hours_ago = (SENSOR_READINGS_PER_DEVICE - 1 - i) * (24 / max(SENSOR_READINGS_PER_DEVICE, 1))
+                # 添加随机偏移（±30分钟），避免完全相同的间隔
+                random_offset_minutes = random.randint(-30, 30)
+                current_time = end_time - timedelta(hours=hours_ago, minutes=random_offset_minutes)
                 
-                current_time += timedelta(hours=1)
+                value = generate_sensor_value(metric, current_time)
+                
+                # 随机选择一个批次
+                batch = random.choice(batches) if batches else None
+                
+                # 创建对象，只传递可以在构造函数中使用的字段
+                reading = SensorReading(
+                    device_id=device.id,
+                    pond_id=device.pond_id,
+                    value=value
+                )
+                # 设置其他字段（这些字段设置了 init=False）
+                reading.batch_id = batch.id if batch else None
+                reading.unit = device.sensor_type.unit
+                reading.metric = metric
+                reading.recorded_at = current_time
+                reading.ts_utc = current_time
+                reading.ts_local = current_time.astimezone(timezone(timedelta(hours=9)))  # 日本时区
+                reading.quality_flag = "ok" if random.random() > 0.05 else random.choice(["missing", "anomaly"])
+                
+                db.session.add(reading)
+                reading_count += 1
         
         db.session.commit()
         print(f"  ✓ 传感器读数生成完成，共 {reading_count} 条")
@@ -841,6 +841,8 @@ def generate_mock_data():
                 rule.check_interval = rule_config["check_interval"]
                 rule.check_interval_unit = rule_config["check_interval_unit"]
                 rule.is_enabled = True
+                # 设置上次检查时间（模拟调度器已运行）
+                rule.last_checked_at = datetime.now(timezone.utc) - timedelta(minutes=random.randint(1, 30))
                 
                 db.session.add(rule)
                 db.session.flush()

@@ -227,3 +227,20 @@ class Config:
     
     # 传感器实时数据配置（可通过环境变量覆盖）
     SENSOR_REALTIME_LIMIT = int(os.getenv('SENSOR_REALTIME_LIMIT', '24'))  # 每个 metric 获取的最新记录数，默认24条
+    
+    # ==================== 预警调度配置 ====================
+    # 防抖时间（秒）：同一规则在此时间内不重复预警
+    ALERT_DEBOUNCE_SECONDS = int(os.getenv('ALERT_DEBOUNCE_SECONDS', '300'))
+    
+    # APScheduler 配置
+    # 同一任务最多并发实例数
+    ALERT_SCHEDULER_MAX_INSTANCES = int(os.getenv('ALERT_SCHEDULER_MAX_INSTANCES', '1'))
+    
+    # 错过的任务是否合并执行
+    ALERT_SCHEDULER_COALESCE = os.getenv('ALERT_SCHEDULER_COALESCE', 'true').lower() in ('1', 'true', 'yes')
+    
+    # 错过执行的宽限时间（秒）
+    ALERT_SCHEDULER_MISFIRE_GRACE_TIME = int(os.getenv('ALERT_SCHEDULER_MISFIRE_GRACE_TIME', '60'))
+    
+    # 线程池大小：最多同时执行多少个不同规则的检查任务
+    ALERT_SCHEDULER_THREAD_POOL_SIZE = int(os.getenv('ALERT_SCHEDULER_THREAD_POOL_SIZE', '10'))

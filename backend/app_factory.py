@@ -113,6 +113,22 @@ def create_app(config_class=Config):
     
     logger.info("所有蓝图注册完成")
     
+    # 初始化预警调度器
+    # 只在非调试模式或主进程中初始化，避免 Flask 调试模式重复初始化
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        try:
+            from services.alert_scheduler_service import AlertSchedulerService
+            database_url = app.config.get('SQLALCHEMY_DATABASE_URI')
+            if database_url:
+                AlertSchedulerService.init_scheduler(database_url)
+                logger.info("预警调度器初始化完成")
+            else:
+                logger.warning("数据库URL未配置，跳过预警调度器初始化")
+        except ImportError as e:
+            logger.warning(f"APScheduler 未安装，预警调度器未启用: {str(e)}")
+        except Exception as e:
+            logger.error(f"预警调度器初始化失败: {str(e)}", exc_info=True)
+    
     return app
 
 

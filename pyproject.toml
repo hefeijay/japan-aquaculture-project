@@ -8,11 +8,13 @@ dependencies = [
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
     "flask-sqlalchemy>=3.1.1",
+    "flask-jwt-extended>=4.6.0",
     "sqlalchemy>=2.0.36",
     "pymysql>=1.1.1",
     "requests>=2.31.0",
     "python-dotenv>=1.0.1",
     "werkzeug>=3.0.0",
+    "apscheduler>=3.10.4",
     
     # Agent 项目依赖
     "langgraph>=0.2.0",
