@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "日本陆上养殖项目 API",
-    "description": "日本陆上养殖项目完整接口文档\n\n包含设备管理、养殖池管理、传感器监控、数据采集等功能。\n\n## 统一设备表架构说明\n\n所有设备信息存储在统一的 `devices` 表中，通过 `device_type_id` 关联 `device_types` 表获取设备类别。\n\n- **传感器设备**：通过 `sensor_type_id` 关联 `sensor_types` 表获取传感器类型信息，返回在 `info` 字段\n- **其他设备**：特有配置存储在 `device_specific_config` 字段，直接返回\n\n## 设备类型特殊字段映射\n\n不同设备类型（category）在 `device_specific_config` 字段中需要填写的特殊字段如下：\n\n### 喂食机 (feeder)\n- `feed_count`: 默认喂食份数（来自云端API的feedCount，默认：1）\n- `timezone`: 时区（UTC+，对应云端API的devTimeZone，默认：9）\n- `network_type`: 网络类型（0=WiFi, 1=4G，对应云端API的netType，默认：0）\n- `group_id`: 设备分组ID（对应云端API的groupID）\n- `feed_portion_weight`: 每份饲料重量（克），用于计算总投喂量，默认：17.0\n- `capacity_kg`: 饲料容量（千克）\n- `feed_type`: 饲料类型\n\n### 传感器 (sensor)\n无需在 `device_specific_config` 中填写特殊字段，传感器类型信息通过 `sensor_type_id` 关联 `sensor_types` 表获取。\n\n### 摄像头 (camera)\n- `quality`: 画质(高/中/低)\n- `resolution`: 分辨率（如：1920x1080）\n- `notes`: 备注\n\n### 循环水泵 (water_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 鼓风机 (air_blower)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 水龙头开关 (water_switch)\n- `notes`: 备注\n\n### 太阳能加热器循环泵 (solar_heater_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n## 固定枚举值说明\n\n### 设备状态 (status)\n- `online`: 在线\n- `offline`: 离线\n\n### 控制模式 (control_mode)\n- `manual_only`: 仅人工\n- `ai_only`: 仅AI\n- `hybrid`: 人工/AI混合\n\n### 设备类别 (category)\n- `sensor`: 传感器\n- `feeder`: 喂食机\n- `camera`: 摄像头\n- `water_pump`: 循环水泵\n- `air_blower`: 鼓风机\n- `water_switch`: 水龙头开关\n- `solar_heater_pump`: 太阳能加热器循环泵\n\n### 喂食机状态 (feeder status)\n- `ok`: 正常\n- `warning`: 警告\n- `error`: 错误",
+    "description": "日本陆上养殖项目完整接口文档\n\n包含设备管理、养殖池管理、传感器监控、数据采集等功能。\n\n## 统一设备表架构说明\n\n所有设备信息存储在统一的 `devices` 表中，通过 `device_type_id` 关联 `device_types` 表获取设备类别。\n\n- **传感器设备**：通过 `sensor_type_id` 关联 `sensor_types` 表获取传感器类型信息，返回在 `info` 字段\n- **其他设备**：特有配置存储在 `device_specific_config` 字段，直接返回\n\n## 设备类型特殊字段映射\n\n不同设备类型（category）在 `device_specific_config` 字段中需要填写的特殊字段如下：\n\n### 喂食机 (feeder)\n- `feed_count`: 默认喂食份数（来自云端API的feedCount，默认：1）\n- `timezone`: 时区（UTC+，对应云端API的devTimeZone，默认：9）\n- `network_type`: 网络类型（0=WiFi, 1=4G，对应云端API的netType，默认：0）\n- `group_id`: 设备分组ID（对应云端API的groupID）\n- `feed_portion_weight`: 每份饲料重量（克），用于计算总投喂量，默认：17.0\n- `capacity_kg`: 饲料容量（千克）\n- `feed_type`: 饲料类型\n\n### 传感器 (sensor)\n无需在 `device_specific_config` 中填写特殊字段，传感器类型信息通过 `sensor_type_id` 关联 `sensor_types` 表获取。\n\n### 摄像头 (camera)\n- `quality`: 画质(高/中/低)\n- `resolution`: 分辨率（如：1920x1080）\n- `notes`: 备注\n\n### 循环水泵 (water_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 鼓风机 (air_blower)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 水龙头开关 (water_switch)\n- `notes`: 备注\n\n### 太阳能加热器循环泵 (solar_heater_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n## 固定枚举值说明\n\n### 设备状态 (status)\n- `online`: 在线\n- `offline`: 离线\n\n### 控制模式 (control_mode)\n- `manual_only`: 仅人工\n- `ai_only`: 仅AI\n- `hybrid`: 人工/AI混合\n\n### 设备类别 (category)\n- `sensor`: 传感器\n- `feeder`: 喂食机\n- `camera`: 摄像头\n- `water_pump`: 循环水泵\n- `air_blower`: 鼓风机\n- `water_switch`: 水龙头开关\n- `solar_heater_pump`: 太阳能加热器循环泵\n\n### 喂食机状态 (feeder status)\n- `ok`: 正常\n- `warning`: 警告\n- `error`: 错误\n\n## 时间字段说明\n\n预警相关接口返回的时间字段分为 UTC 时间和本地时间两种：\n\n### 预警规则 (AlertRule)\n- `last_checked_at`: 上次检查时间（UTC）\n- `last_checked_at_local`: 上次检查时间（本地时间）\n\n### 预警通知 (AlertNotification)\n- `triggered_at`: 预警触发时间（UTC）\n- `triggered_at_local`: 预警触发时间（本地时间）\n- `resolved_at`: 解决时间（UTC）\n- `resolved_at_local`: 解决时间（本地时间）\n\n### 本地时区配置\n本地时间的时区由后端配置 `Config.LOCAL_TIMEZONE_OFFSET` 决定，默认为 UTC+9（日本标准时间）。可通过环境变量 `LOCAL_TIMEZONE_OFFSET` 修改。",
     "version": "2.0.0",
     "contact": {
       "name": "API Support"
@@ -1974,6 +1974,8 @@
                         "check_interval": 5,
                         "check_interval_unit": "minute",
                         "is_enabled": true,
+                        "last_checked_at": "2026-01-14T10:35:00Z",
+                        "last_checked_at_local": "2026-01-14T19:35:00+09:00",
                         "created_at": "2026-01-14T10:30:00Z",
                         "updated_at": "2026-01-14T10:30:00Z"
                       }
@@ -2057,6 +2059,8 @@
                         "check_interval": 5,
                         "check_interval_unit": "minute",
                         "is_enabled": true,
+                        "last_checked_at": null,
+                        "last_checked_at_local": null,
                         "created_at": "2026-01-14T10:30:00Z",
                         "updated_at": "2026-01-14T10:30:00Z"
                       }
@@ -2345,6 +2349,8 @@
                       "trigger_condition": "below",
                       "threshold": "5.0",
                       "is_enabled": true,
+                      "last_checked_at": "2026-01-14T10:35:00Z",
+                      "last_checked_at_local": "2026-01-14T19:35:00+09:00",
                       "created_at": "2026-01-14T10:30:00Z",
                       "updated_at": "2026-01-14T10:30:00Z"
                     },
@@ -2360,7 +2366,9 @@
                         "content": "溶解氧低于阈值5.0，当前值: 4.2",
                         "current_value": "4.2",
                         "triggered_at": "2026-01-14T11:30:00Z",
+                        "triggered_at_local": "2026-01-14T20:30:00+09:00",
                         "resolved_at": null,
+                        "resolved_at_local": null,
                         "created_at": "2026-01-14T11:30:00Z",
                         "updated_at": "2026-01-14T11:30:00Z"
                       }
@@ -2496,7 +2504,9 @@
                         "content": "溶解氧低于阈值5.0，当前值: 4.2",
                         "current_value": "4.2",
                         "triggered_at": "2026-01-14T11:30:00Z",
+                        "triggered_at_local": "2026-01-14T20:30:00+09:00",
                         "resolved_at": null,
+                        "resolved_at_local": null,
                         "created_at": "2026-01-14T11:30:00Z",
                         "updated_at": "2026-01-14T11:30:00Z"
                       },
@@ -2511,7 +2521,9 @@
                         "content": "温度高于阈值30.0，当前值: 31.5",
                         "current_value": "31.5",
                         "triggered_at": "2026-01-14T10:00:00Z",
+                        "triggered_at_local": "2026-01-14T19:00:00+09:00",
                         "resolved_at": "2026-01-14T10:30:00Z",
+                        "resolved_at_local": "2026-01-14T19:30:00+09:00",
                         "created_at": "2026-01-14T10:00:00Z",
                         "updated_at": "2026-01-14T10:30:00Z"
                       }
@@ -2591,7 +2603,9 @@
                     "content": "溶解氧低于阈值5.0，当前值: 4.2",
                     "current_value": "4.2",
                     "triggered_at": "2026-01-14T11:30:00Z",
+                    "triggered_at_local": "2026-01-14T20:30:00+09:00",
                     "resolved_at": "2026-01-14T12:00:00Z",
+                    "resolved_at_local": "2026-01-14T21:00:00+09:00",
                     "created_at": "2026-01-14T11:30:00Z",
                     "updated_at": "2026-01-14T12:00:00Z"
                   }
@@ -3692,6 +3706,13 @@
             "description": "上次检查时间（调度器执行检查时更新）",
             "example": "2026-01-14T10:35:00Z"
           },
+          "last_checked_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "上次检查时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置，默认 UTC+9）",
+            "example": "2026-01-14T19:35:00+09:00"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3860,15 +3881,29 @@
           "triggered_at": {
             "type": "string",
             "format": "date-time",
-            "description": "预警触发时间",
+            "description": "预警触发时间（UTC）",
             "example": "2026-01-14T11:30:00Z"
+          },
+          "triggered_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "预警触发时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置，默认 UTC+9）",
+            "example": "2026-01-14T20:30:00+09:00"
           },
           "resolved_at": {
             "type": "string",
             "format": "date-time",
             "nullable": true,
-            "description": "解决时间",
+            "description": "解决时间（UTC）",
             "example": "2026-01-14T12:00:00Z"
+          },
+          "resolved_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "解决时间（本地时间，时区由 Config.LOCAL_TIMEZONE_OFFSET 配置，默认 UTC+9）",
+            "example": "2026-01-14T21:00:00+09:00"
           },
           "created_at": {
             "type": "string",
