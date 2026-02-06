@@ -24,7 +24,7 @@ from services.sensor_service import SensorService
 from services.ai_decision_service import AIDecisionService
 from services.pond_service import PondService
 from utils.auth import auth_required, token_required
-from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument, Device, DeviceType, User
+from db_models import Session, Tool, Model, KnowledgeBase, KnowledgeDocument, Device, DeviceType, User, Pond
 from db_models.db_session import db_session_factory
 
 # 创建蓝图
@@ -431,21 +431,33 @@ def get_device_status():
 @api_bp.route('/location/data', methods=['GET'])
 def get_location_data():
     """
-    获取地理位置数据接口
-    
+    获取地理位置数据接口，从养殖池表(ponds)读取数据并转换为前端约定格式。
     Returns:
-        JSON格式的地理位置数据，包含养殖场各区域的位置信息
+        { "success": true, "data": [ { id, name, coordinates, area, status, depth, lastUpdate, type } ] }
     """
     try:
-        # 已取消模拟数据逻辑，地理位置数据无真实数据源则返回500
-        logger.error("地理位置数据不可用，返回500")
-        return jsonify({
-            "success": False,
-            "error": "地理位置数据不可用",
-            "timestamp": datetime.now().isoformat()
-        }), 500
+        with db_session_factory() as session:
+            ponds = session.query(Pond).order_by(Pond.id).all()
+            # 日本茨城县筑波市大致坐标，按池序号微调避免重叠
+            base_lat, base_lng = 36.0833, 140.0833
+            data = []
+            for i, pond in enumerate(ponds):
+                data.append({
+                    "id": f"location_{pond.id:03d}",
+                    "name": pond.name,
+                    "coordinates": {
+                        "lat": round(base_lat + i * 0.01, 4),
+                        "lng": round(base_lng + i * 0.01, 4)
+                    },
+                    "area": int(pond.area) if pond.area is not None else 0,
+                    "status": "active",
+                    "depth": 2.5,
+                    "lastUpdate": int(pond.updated_at.timestamp() * 1000) if pond.updated_at else 0,
+                    "type": "pond"
+                })
+            return jsonify({"success": True, "data": data})
     except Exception as e:
-        logger.error(f"地理位置数据接口异常: {str(e)}")
+        logger.error(f"地理位置数据接口异常: {str(e)}", exc_info=True)
         return jsonify({
             "success": False,
             "error": str(e),

@@ -124,10 +124,10 @@ class DeviceService:
                     devices_data.append(device_data)
                 
                 # 随机选择5个设备返回
-                if len(devices_data) > 5:
-                    devices_data = random.sample(devices_data, 5)
+                # if len(devices_data) > 5:
+                #     devices_data = random.sample(devices_data, 5)
                 
-                logger.info(f"成功获取{len(devices_data)}个设备的状态信息（随机选择）")
+                logger.info(f"成功获取{len(devices_data)}个设备的状态信息")
                 return devices_data
                 
         except Exception as e:

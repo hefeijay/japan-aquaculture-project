@@ -15,6 +15,7 @@
 
 import sys
 import os
+import csv
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import random
@@ -30,8 +31,8 @@ from app_factory import create_app
 from config.settings import Config
 from db_models import (
     db, Pond, Batch, DeviceType, SensorType, Device, 
-    SensorReading, FeederLog, CameraImage, CameraHealth, User,
-    AlertRule, AlertNotification
+    SensorReading, FeederLog, CameraImage, User,
+    AlertRule, AIDecision
 )
 
 
@@ -40,9 +41,36 @@ def get_local_timezone():
     return timezone(timedelta(hours=Config.LOCAL_TIMEZONE_OFFSET))
 
 
+def _parse_datetime(s: str, default_tz=timezone.utc):
+    """解析 CSV 中的时间字符串，支持多种格式，返回 timezone-aware datetime"""
+    if not s or not str(s).strip():
+        return datetime.now(default_tz)
+    s = str(s).strip()
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ):
+        try:
+            dt = datetime.strptime(s[:26], fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=default_tz)
+            return dt
+        except (ValueError, TypeError):
+            continue
+    return datetime.now(default_tz)
+
+
 # ==================== 可配置参数 ====================
-# 每个传感器设备生成的读数条数
+# 每个传感器设备生成的读数条数（仅在没有 CSV 时使用）
 SENSOR_READINGS_PER_DEVICE = 5
+# 喂食机/摄像头/传感器数据：若存在 CSV 则从 scripts/db_datas 导入，否则生成 mock
+DB_DATAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_datas")
+FEEDERS_LOGS_CSV = os.path.join(DB_DATAS_DIR, "feeders_logs.csv")
+CAMERA_IMAGES_CSV = os.path.join(DB_DATAS_DIR, "camera_images.csv")
+SENSOR_READINGS_CSV = os.path.join(DB_DATAS_DIR, "sensor_readings.csv")
+AI_DECISIONS_CSV = os.path.join(DB_DATAS_DIR, "ai_decisions.csv")
 # ====================================================
 
 # 8种传感器类型配置（匹配数据库表结构）
@@ -168,41 +196,41 @@ def generate_device_specific_config(category: str, device_counter: int) -> dict:
         }
     
     elif category == "camera":
-        # 摄像头配置
+        # 摄像头配置：固定 1920x1080，notes 为空
         return {
-            "quality": random.choice(["高", "中", "低"]),
-            "resolution": random.choice(["1920x1080", "1280x720", "2560x1440"]),
-            "notes": f"摄像头设备{device_counter}的备注信息"
+            "quality": "高",
+            "resolution": "1920x1080",
+            "notes": ""
         }
     
     elif category == "water_pump":
-        # 循环水泵配置
+        # 循环水泵：3.5吨/小时 ≈ 58.33 L/min，50w = 0.05 kW，24小时运行
         return {
-            "flow_rate": round(random.uniform(10.0, 50.0), 2),  # 循环量（L/min）
-            "power": round(random.uniform(0.5, 3.0), 2),  # 功率（kW）
-            "notes": f"循环水泵设备{device_counter}的备注信息"
+            "flow_rate": 58.33,  # 3.5吨/小时（L/min）
+            "power": 0.05,       # 50W（kW）
+            "notes": "24小时运行"
         }
     
     elif category == "air_blower":
-        # 鼓风机配置
+        # 鼓风机：100L/min，100w = 0.1 kW，24小时运行
         return {
-            "air_flow": round(random.uniform(50.0, 200.0), 2),  # 气量（L/min）
-            "power": round(random.uniform(0.3, 2.0), 2),  # 功率（kW）
-            "notes": f"鼓风机设备{device_counter}的备注信息"
+            "air_flow": 100.0,   # 气量（L/min）
+            "power": 0.1,        # 100W（kW）
+            "notes": "24小时运行"
         }
     
     elif category == "water_switch":
-        # 水龙头开关配置
+        # 水龙头开关：电磁阀控制，液位传感器低于980mm开启，达到1000mm停止
         return {
-            "notes": f"水龙头开关设备{device_counter}的备注信息"
+            "notes": "电磁阀控制，液位传感器低于980mm开启，达到1000mm停止"
         }
     
     elif category == "solar_heater_pump":
-        # 太阳能加热器循环泵配置
+        # 太阳能加热器循环泵：1吨/小时 ≈ 16.67 L/min，20w = 0.02 kW，需要手动开启关闭
         return {
-            "flow_rate": round(random.uniform(8.0, 30.0), 2),  # 循环量（L/min）
-            "power": round(random.uniform(0.4, 2.5), 2),  # 功率（kW）
-            "notes": f"太阳能加热器循环泵设备{device_counter}的备注信息"
+            "flow_rate": 16.67,  # 1吨/小时（L/min）
+            "power": 0.02,       # 20W（kW）
+            "notes": "需要手动开启关闭"
         }
     
     else:
@@ -335,10 +363,12 @@ def generate_mock_data():
         
         db.session.commit()
         
-        # 3. 创建养殖池
+        # 3. 创建养殖池（五个：1号池～5号池，日本茨城县筑波市，面积 20/20/7/7/7 平方米）
         print("\n[3/9] 创建养殖池...")
         ponds = []
-        pond_names = ["1号池", "2号池", "3号池", "4号池"]
+        pond_names = ["1号池", "2号池", "3号池", "4号池", "5号池"]
+        pond_areas = [20.0, 20.0, 7.0, 7.0, 7.0]  # 平方米
+        location_tsukuba = "日本茨城县筑波市"
         for i, name in enumerate(pond_names, 1):
             existing = db.session.query(Pond).filter_by(pond_id=f"POND_{i:03d}").first()
             if existing:
@@ -348,10 +378,10 @@ def generate_mock_data():
                 pond = Pond(
                     pond_id=f"POND_{i:03d}",
                     name=name,
-                    location=f"车间A-{i}区",
-                    area=round(random.uniform(50.0, 200.0), 2),
+                    location=location_tsukuba,
+                    area=pond_areas[i - 1],
                     count=random.randint(5000, 20000),
-                    description=f"{name}的养殖池，位于车间A-{i}区"
+                    description=f"{name}的养殖池，位于{location_tsukuba}"
                 )
                 db.session.add(pond)
                 db.session.flush()
@@ -360,42 +390,46 @@ def generate_mock_data():
         
         db.session.commit()
         
-        # 4. 创建批次
+        # 4. 创建批次（两个批次均在四号池，物种/来源/放养密度一致）
         print("\n[4/9] 创建批次...")
         batches = []
-        # 只创建2个批次
-        for j in range(1, 3):
-            batch_id = f"BATCH_2024_{j:02d}"
-            existing = db.session.query(Batch).filter_by(batch_id=batch_id).first()
+        pond_4 = ponds[3]  # 四号池
+        batch_configs = [
+            {
+                "batch_id": "BATCH_2024_01",
+                "start_date": datetime(2024, 3, 1).date(),
+                "end_date": datetime(2025, 9, 12).date(),
+            },
+            {
+                "batch_id": "BATCH_2025_02",
+                "start_date": datetime(2025, 9, 12).date(),
+                "end_date": None,
+            },
+        ]
+        species = "Litopenaeus vannamei"
+        batch_location = "四号池"
+        seed_origin = "日本"
+        stocking_density = Decimal("500")
+        for cfg in batch_configs:
+            existing = db.session.query(Batch).filter_by(batch_id=cfg["batch_id"]).first()
             if existing:
                 batches.append(existing)
-                print(f"  ✓ 批次已存在: {batch_id}")
+                print(f"  ✓ 批次已存在: {cfg['batch_id']}")
             else:
-                # 批次1关联到1号池，批次2关联到4号池
-                if j == 1:
-                    pond = ponds[0]  # 1号池
-                else:
-                    pond = ponds[3]  # 4号池
-                start_date = datetime.now().date() - timedelta(days=random.randint(30, 180))
-                end_date = None if random.random() > 0.3 else (start_date + timedelta(days=random.randint(60, 120)))
-                
-                # 创建对象，只传递可以在构造函数中使用的字段
                 batch = Batch(
-                    batch_id=batch_id,
-                    pond_id=pond.id,
-                    start_date=start_date
+                    batch_id=cfg["batch_id"],
+                    pond_id=pond_4.id,
+                    start_date=cfg["start_date"]
                 )
-                # 设置其他字段（这些字段设置了 init=False）
-                batch.species = "Litopenaeus vannamei"
-                batch.end_date = end_date
-                batch.location = f"车间A-{j}区"
-                batch.seed_origin = "育苗场A"
-                batch.stocking_density = Decimal(str(round(random.uniform(50.0, 150.0), 2)))
-                
+                batch.species = species
+                batch.end_date = cfg["end_date"]
+                batch.location = batch_location
+                batch.seed_origin = seed_origin
+                batch.stocking_density = stocking_density
                 db.session.add(batch)
                 db.session.flush()
                 batches.append(batch)
-                print(f"  ✓ 创建批次: {batch_id}")
+                print(f"  ✓ 创建批次: {cfg['batch_id']}")
         
         db.session.commit()
         
@@ -407,14 +441,18 @@ def generate_mock_data():
         
         device_counter = 1
         
-        # 只创建5个传感器设备（指定类型），全部放在4号池
+        # 只创建5个传感器设备（device_id 1～5），全部放在4号池；描述=水质探头，归属=日本养殖基地，制造商=普瑞森社中国山东
         pond_4 = ponds[3]  # 4号池（索引为3）
+        sensor_ownership = "日本养殖基地"
+        sensor_manufacturer = "普瑞森社中国山东"
+        sensor_description = "水质探头"
         for metric in SENSOR_DEVICE_METRICS:
             sensor_type = sensor_type_map.get(metric)
             if not sensor_type:
                 continue
-            # 使用中文名称作为设备名称
             device_name = SENSOR_DEVICE_NAMES.get(metric, f"{sensor_type.type_name}传感器")
+            # 液位传感器安装位置为池底，其余为水池液面以下
+            sensor_location = "池底" if metric == "water_level" else "水池液面以下"
             device_id = f"sensor_{device_counter:04d}"
             existing = db.session.query(Device).filter_by(device_id=device_id).first()
             if existing:
@@ -424,14 +462,15 @@ def generate_mock_data():
                 device = Device(
                     device_id=device_id,
                     name=f"{device_name}-{pond_4.name}",
-                    ownership="养殖场",
+                    ownership=sensor_ownership,
                     device_type_id=device_type_map["sensor"].id,
                     sensor_type_id=sensor_type.id,
                     pond_id=pond_4.id,
                     model=f"Model-{sensor_type.metric.upper()}",
-                    manufacturer="传感器制造公司",
+                    manufacturer=sensor_manufacturer,
                     serial_number=f"SN-{device_counter:06d}",
-                    location=f"{pond_4.name}-{device_name}",
+                    location=sensor_location,
+                    description=sensor_description,
                     status="online",
                     control_mode="hybrid",
                     connection_info=generate_connection_info(device_counter),
@@ -442,46 +481,91 @@ def generate_mock_data():
                 sensor_devices.append(device)
                 device_counter += 1
         
-        # 只创建2个喂食机，group_id分别为AI和AI2
+        # 摄像头2个：device_id 6→摄像头2（水下），7→摄像头3（距水面约41cm）；描述与归属一致，关联4号池
+        camera_description = (
+            "具备 IP66 防水性能，能够在长期高湿、高盐（或高有机负荷）环境下稳定运行。"
+            "镜头选用 2.8 mm 定焦广角镜头，视角约为 120°，成像无明显畸变。"
+        )
+        camera_locations = [
+            "水下",
+            "距离水面约 41 cm，视角向下，采用水平固定方式进行布设，以减少视角变化对图像分析结果的影响。",
+        ]
+        camera_names = ["摄像头2", "摄像头3"]
+        for i, cam_name in enumerate(camera_names):
+            device_counter = 6 + i
+            device_id = f"camera_{device_counter:04d}"
+            existing = db.session.query(Device).filter_by(device_id=device_id).first()
+            if existing:
+                if existing.device_type.category == "camera":
+                    camera_devices.append(existing)
+            else:
+                device = Device(
+                    device_id=device_id,
+                    name=cam_name,
+                    ownership="日本养殖基地",
+                    device_type_id=device_type_map["camera"].id,
+                    sensor_type_id=None,
+                    pond_id=pond_4.id,
+                    model="Camera-HD-1080P",
+                    manufacturer="摄像头制造公司",
+                    serial_number=f"SN-CAM-{device_counter:06d}",
+                    location=camera_locations[i],
+                    description=camera_description,
+                    status="offline" if i == 0 else "online",  # 摄像头2 设为非在线
+                    control_mode="hybrid",
+                    connection_info=generate_connection_info(device_counter),
+                    device_specific_config=generate_device_specific_config("camera", device_counter)
+                )
+                db.session.add(device)
+                db.session.flush()
+                camera_devices.append(device)
+        device_counter = 8  # 喂食机从 8 开始
+        
+        # 喂食机2个：device_id 8→喂食机AI（group_id AI），9→AI2（group_id AI2）；归属/型号/制造商/location/配置一致
+        feeder_names = ["喂食机AI", "喂食机AI2"]
         feeder_group_ids = ["AI", "AI2"]
         feeder_connection_info = {
             "url": "https://ffish.huaeran.cn:8081/commonRequest",
             "password": "123456789",
             "username": "8619034657726"
         }
-        for i, group_id in enumerate(feeder_group_ids, 1):
+        # 两台喂食机共用：描述、归属、型号、制造商、location、device_specific_config
+        feeder_common = {
+            "description": "自动喂食机",
+            "ownership": "日本养殖基地",
+            "model": "EV800W",
+            "manufacturer": "依华莱斯（EVNICE）",
+            "location": "水池上方",
+        }
+        feeder_config_common = {
+            "feed_count": 1,
+            "timezone": 9,
+            "network_type": 0,
+            "feed_portion_weight": 17.0,
+            "capacity_kg": 5,
+            "feed_type": "颗粒",
+        }
+        for i, group_id in enumerate(feeder_group_ids):
             device_id = f"feeder_{device_counter:04d}"
             existing = db.session.query(Device).filter_by(device_id=device_id).first()
             if existing:
                 if existing.device_type.category == "feeder":
                     feeder_devices.append(existing)
             else:
-                # 关联到4号池
-                pond = ponds[3]
-                
-                # 生成喂食机专属配置，覆盖group_id
-                feeder_config = {
-                    "feed_count": 1,  # 默认1份
-                    "timezone": 9,
-                    "network_type": random.choice([0, 1]),
-                    "group_id": group_id,  # 使用指定的group_id
-                    "feed_portion_weight": 17.0,  # 每份17克
-                    "capacity_kg": round(random.uniform(50.0, 200.0), 1),
-                    "feed_type": random.choice(["虾料A型", "虾料B型", "虾料C型", "通用饲料"])
-                }
-                
+                feeder_config = {**feeder_config_common, "group_id": group_id}
                 device = Device(
                     device_id=device_id,
-                    name=f"自动喂食机-{pond.name}-{i}号",
-                    ownership="养殖场",
+                    name=feeder_names[i],
+                    ownership=feeder_common["ownership"],
                     device_type_id=device_type_map["feeder"].id,
                     sensor_type_id=None,
-                    pond_id=pond.id,
-                    model="AutoFeeder-Pro",
-                    manufacturer="喂食机制造公司",
+                    pond_id=pond_4.id,
+                    model=feeder_common["model"],
+                    manufacturer=feeder_common["manufacturer"],
                     serial_number=f"SN-FEED-{device_counter:06d}",
-                    location=f"{pond.name}-喂食区{i}",
-                    status="online" if random.random() > 0.1 else "offline",
+                    location=feeder_common["location"],
+                    description=feeder_common["description"],
+                    status="online",
                     control_mode="hybrid",
                     connection_info=feeder_connection_info,
                     device_specific_config=feeder_config
@@ -490,36 +574,6 @@ def generate_mock_data():
                 db.session.flush()
                 feeder_devices.append(device)
                 device_counter += 1
-        
-        # 只为4号池创建摄像头（1-2个）
-        for pond in [ponds[3]]:
-            for i in range(1, random.randint(2, 3)):
-                device_id = f"camera_{device_counter:04d}"
-                existing = db.session.query(Device).filter_by(device_id=device_id).first()
-                if existing:
-                    if existing.device_type.category == "camera":
-                        camera_devices.append(existing)
-                else:
-                    device = Device(
-                        device_id=device_id,
-                        name=f"监控摄像头-{pond.name}-{i}号",
-                        ownership="养殖场",
-                        device_type_id=device_type_map["camera"].id,
-                        sensor_type_id=None,
-                        pond_id=pond.id,
-                        model="Camera-HD-1080P",
-                        manufacturer="摄像头制造公司",
-                        serial_number=f"SN-CAM-{device_counter:06d}",
-                        location=f"{pond.name}-监控点{i}",
-                        status="online" if random.random() > 0.1 else "offline",
-                        control_mode="hybrid",
-                        connection_info=generate_connection_info(device_counter),
-                        device_specific_config=generate_device_specific_config("camera", device_counter)
-                    )
-                    db.session.add(device)
-                    db.session.flush()
-                    camera_devices.append(device)
-                    device_counter += 1
         
         # 只为4号池创建其他设备类型（循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵）
         # 确保每个设备类型都至少创建一个设备
@@ -558,7 +612,7 @@ def generate_mock_data():
                         device = Device(
                             device_id=device_id,
                             name=f"{device_names[category]}-{pond.name}",
-                            ownership="养殖场",
+                            ownership="日本养殖基地",
                             device_type_id=device_type_map[category].id,
                             sensor_type_id=None,
                             pond_id=pond.id,
@@ -566,7 +620,7 @@ def generate_mock_data():
                             manufacturer=device_manufacturers[category],
                             serial_number=f"SN-{category.upper()}-{device_counter:06d}",
                             location=f"{pond.name}-{device_names[category]}",
-                            status="online" if random.random() > 0.1 else "offline",
+                            status="online",
                             control_mode="hybrid",
                             connection_info=generate_connection_info(device_counter),
                             device_specific_config=generate_device_specific_config(category, device_counter)
@@ -582,206 +636,303 @@ def generate_mock_data():
         print(f"  ✓ 创建摄像头设备: {len(camera_devices)} 个")
         print(f"  ✓ 创建其他设备: {len(other_devices)} 个")
         
-        # 6. 生成传感器读数（每个设备生成 SENSOR_READINGS_PER_DEVICE 条，时间分散）
-        print(f"\n[6/9] 生成传感器读数（每设备 {SENSOR_READINGS_PER_DEVICE} 条）...")
+        # 构建 CSV 导入用映射：device_id 字符串 -> devices.id；batch_id/pond_id 数字 -> 主键
+        device_id_str_to_pk = {}
+        for d in sensor_devices + feeder_devices + camera_devices:
+            device_id_str_to_pk[d.device_id] = d.id
+        batch_id_map = {}
+        for idx, b in enumerate(batches, 1):
+            batch_id_map[idx] = b.id
+        pond_id_map = {4: pond_4.id}
+        # 传感器按 (pond_id, metric) 解析，因 CSV 中 device_id 可能为源库主键
+        sensor_metric_pond_to_device = {}
+        for d in sensor_devices:
+            if d.sensor_type and d.pond_id:
+                sensor_metric_pond_to_device[(d.pond_id, d.sensor_type.metric)] = d.id
+        
+        # 6. 传感器读数：有 CSV 则从 scripts/db_datas/sensor_readings.csv 导入，否则生成
         reading_count = 0
-        end_time = datetime.now(timezone.utc)
-        
-        for device in sensor_devices:
-            if device.sensor_type is None:
-                continue
-            
-            metric = device.sensor_type.metric
-            
-            # 为每个设备生成指定条数的数据，时间分散在最近24小时内
-            for i in range(SENSOR_READINGS_PER_DEVICE):
-                # 计算时间间隔，使读数均匀分布在最近24小时内
-                hours_ago = (SENSOR_READINGS_PER_DEVICE - 1 - i) * (24 / max(SENSOR_READINGS_PER_DEVICE, 1))
-                # 添加随机偏移（±30分钟），避免完全相同的间隔
-                random_offset_minutes = random.randint(-30, 30)
-                current_time = end_time - timedelta(hours=hours_ago, minutes=random_offset_minutes)
-                
-                value = generate_sensor_value(metric, current_time)
-                
-                # 随机选择一个批次
-                batch = random.choice(batches) if batches else None
-                
-                # 创建对象，只传递可以在构造函数中使用的字段
-                reading = SensorReading(
-                    device_id=device.id,
-                    pond_id=device.pond_id,
-                    value=value
-                )
-                # 设置其他字段（这些字段设置了 init=False）
-                reading.batch_id = batch.id if batch else None
-                reading.unit = device.sensor_type.unit
-                reading.metric = metric
-                reading.recorded_at = current_time
-                reading.ts_utc = current_time
-                reading.ts_local = current_time.astimezone(get_local_timezone())
-                reading.quality_flag = "ok" if random.random() > 0.05 else random.choice(["missing", "anomaly"])
-                
-                db.session.add(reading)
-                reading_count += 1
-        
-        db.session.commit()
-        print(f"  ✓ 传感器读数生成完成，共 {reading_count} 条")
-        
-        # 7. 生成喂食机记录（最近30天，每天2-4次）
-        print("\n[7/9] 生成喂食机记录...")
-        feeder_log_count = 0
-        end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(days=30)
-        
-        for device in feeder_devices:
-            current_date = start_time.date()
-            end_date = end_time.date()
-            
-            while current_date <= end_date:
-                # 每天2-4次投喂
-                feed_times = random.randint(2, 4)
-                feed_hours = sorted(random.sample(range(6, 20), feed_times))
-                
-                for hour in feed_hours:
-                    feed_time = datetime.combine(current_date, datetime.min.time().replace(hour=hour))
-                    feed_time = feed_time.replace(tzinfo=timezone.utc)
-                    
-                    # 随机选择一个批次
+        if os.path.exists(SENSOR_READINGS_CSV):
+            print(f"\n[6/9] 从 CSV 导入传感器读数: {SENSOR_READINGS_CSV}")
+            with open(SENSOR_READINGS_CSV, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        pond_pk = pond_id_map.get(int(row["pond_id"])) if row.get("pond_id") else None
+                        if not pond_pk:
+                            continue
+                        metric = (row.get("metric") or "").strip()
+                        device_pk = sensor_metric_pond_to_device.get((pond_pk, metric))
+                        if not device_pk:
+                            csv_did = row.get("device_id")
+                            if csv_did:
+                                try:
+                                    n = int(csv_did)
+                                    device_pk = device_id_str_to_pk.get(f"sensor_{n:04d}")
+                                except (ValueError, TypeError):
+                                    pass
+                        if not device_pk:
+                            continue
+                        batch_pk = None
+                        if row.get("batch_id"):
+                            try:
+                                batch_pk = batch_id_map.get(int(row["batch_id"]))
+                            except (ValueError, TypeError):
+                                pass
+                        ts_utc = _parse_datetime(row.get("ts_utc") or row.get("recorded_at"))
+                        value = float(row["value"]) if row.get("value") else 0.0
+                        reading = SensorReading(
+                            device_id=device_pk,
+                            pond_id=pond_pk,
+                            value=value
+                        )
+                        reading.batch_id = batch_pk
+                        reading.unit = (row.get("unit") or "").strip() or None
+                        reading.metric = metric or None
+                        reading.recorded_at = ts_utc
+                        reading.ts_utc = ts_utc
+                        reading.ts_local = ts_utc.astimezone(get_local_timezone())
+                        reading.quality_flag = (row.get("quality_flag") or "ok").strip() or "ok"
+                        if row.get("description"):
+                            reading.description = row["description"].strip()
+                        if row.get("checksum"):
+                            reading.checksum = row["checksum"].strip()
+                        db.session.add(reading)
+                        reading_count += 1
+                        if reading_count % 5000 == 0:
+                            db.session.flush()
+                            print(f"  进度: {reading_count} 条...")
+                    except Exception as e:
+                        if reading_count < 3:
+                            print(f"  ⚠ 跳过行: {e}")
+            db.session.commit()
+            print(f"  ✓ 传感器读数导入完成，共 {reading_count} 条")
+        else:
+            print(f"\n[6/9] 生成传感器读数（每设备 {SENSOR_READINGS_PER_DEVICE} 条）...")
+            end_time = datetime.now(timezone.utc)
+            for device in sensor_devices:
+                if device.sensor_type is None:
+                    continue
+                metric = device.sensor_type.metric
+                for i in range(SENSOR_READINGS_PER_DEVICE):
+                    hours_ago = (SENSOR_READINGS_PER_DEVICE - 1 - i) * (24 / max(SENSOR_READINGS_PER_DEVICE, 1))
+                    random_offset_minutes = random.randint(-30, 30)
+                    current_time = end_time - timedelta(hours=hours_ago, minutes=random_offset_minutes)
+                    value = generate_sensor_value(metric, current_time)
                     batch = random.choice(batches) if batches else None
-                    
-                    feed_amount = round(random.uniform(100.0, 500.0), 3)  # 克
-                    run_time = random.randint(30, 120)  # 秒
-                    leftover = round(random.uniform(500.0, 2000.0), 3)  # 克
-                    
-                    # 创建对象，只传递可以在构造函数中使用的字段
-                    log = FeederLog(
+                    reading = SensorReading(
                         device_id=device.id,
                         pond_id=device.pond_id,
-                        ts_utc=feed_time,
-                        status="ok" if random.random() > 0.05 else random.choice(["warning", "error"])
+                        value=value
                     )
-                    # 设置其他字段（这些字段设置了 init=False）
-                    log.batch_id = batch.id if batch else None
-                    log.ts_local = feed_time.astimezone(get_local_timezone())
-                    log.feed_amount_g = Decimal(str(feed_amount))
-                    log.run_time_s = run_time
-                    log.leftover_estimate_g = Decimal(str(leftover))
-                    
-                    db.session.add(log)
-                    feeder_log_count += 1
-                
-                current_date += timedelta(days=1)
+                    reading.batch_id = batch.id if batch else None
+                    reading.unit = device.sensor_type.unit
+                    reading.metric = metric
+                    reading.recorded_at = current_time
+                    reading.ts_utc = current_time
+                    reading.ts_local = current_time.astimezone(get_local_timezone())
+                    reading.quality_flag = "ok" if random.random() > 0.05 else random.choice(["missing", "anomaly"])
+                    db.session.add(reading)
+                    reading_count += 1
+            db.session.commit()
+            print(f"  ✓ 传感器读数生成完成，共 {reading_count} 条")
         
-        db.session.commit()
-        print(f"  ✓ 喂食机记录生成完成，共 {feeder_log_count} 条")
+        # 7. 喂食机记录：有 CSV 则从 scripts/db_datas/feeders_logs.csv 导入，否则生成
+        feeder_log_count = 0
+        if os.path.exists(FEEDERS_LOGS_CSV):
+            print(f"\n[7/9] 从 CSV 导入喂食机记录: {FEEDERS_LOGS_CSV}")
+            with open(FEEDERS_LOGS_CSV, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        csv_did = row.get("device_id")
+                        if not csv_did:
+                            continue
+                        device_pk = device_id_str_to_pk.get(f"feeder_{int(csv_did):04d}")
+                        if not device_pk:
+                            continue
+                        pond_pk = pond_id_map.get(int(row["pond_id"])) if row.get("pond_id") else pond_4.id
+                        batch_pk = None
+                        if row.get("batch_id"):
+                            try:
+                                batch_pk = batch_id_map.get(int(row["batch_id"]))
+                            except (ValueError, TypeError):
+                                pass
+                        ts_utc = _parse_datetime(row.get("ts_utc") or row.get("ts_local"))
+                        log = FeederLog(
+                            device_id=device_pk,
+                            pond_id=pond_pk,
+                            ts_utc=ts_utc,
+                            status=(row.get("status") or "ok").strip() or "ok"
+                        )
+                        log.batch_id = batch_pk
+                        log.ts_local = ts_utc.astimezone(get_local_timezone())
+                        if row.get("feed_amount_g"):
+                            try:
+                                log.feed_amount_g = Decimal(str(row["feed_amount_g"]))
+                            except Exception:
+                                pass
+                        if row.get("run_time_s"):
+                            try:
+                                log.run_time_s = int(row["run_time_s"])
+                            except Exception:
+                                pass
+                        if row.get("leftover_estimate_g"):
+                            try:
+                                log.leftover_estimate_g = Decimal(str(row["leftover_estimate_g"]))
+                            except Exception:
+                                pass
+                        if row.get("notes"):
+                            log.notes = row["notes"].strip()
+                        if row.get("checksum"):
+                            log.checksum = row["checksum"].strip()
+                        db.session.add(log)
+                        feeder_log_count += 1
+                        if feeder_log_count % 500 == 0:
+                            db.session.flush()
+                            print(f"  进度: {feeder_log_count} 条...")
+                    except Exception as e:
+                        if feeder_log_count < 3:
+                            print(f"  ⚠ 跳过行: {e}")
+            db.session.commit()
+            print(f"  ✓ 喂食机记录导入完成，共 {feeder_log_count} 条")
+        else:
+            print("\n[7/9] 生成喂食机记录...")
+            end_time = datetime.now(timezone.utc)
+            start_time = end_time - timedelta(days=30)
+            for device in feeder_devices:
+                current_date = start_time.date()
+                end_date = end_time.date()
+                while current_date <= end_date:
+                    feed_times = random.randint(2, 4)
+                    feed_hours = sorted(random.sample(range(6, 20), feed_times))
+                    for hour in feed_hours:
+                        feed_time = datetime.combine(current_date, datetime.min.time().replace(hour=hour))
+                        feed_time = feed_time.replace(tzinfo=timezone.utc)
+                        batch = random.choice(batches) if batches else None
+                        feed_amount = round(random.uniform(100.0, 500.0), 3)
+                        run_time = random.randint(30, 120)
+                        leftover = round(random.uniform(500.0, 2000.0), 3)
+                        log = FeederLog(
+                            device_id=device.id,
+                            pond_id=device.pond_id,
+                            ts_utc=feed_time,
+                            status="ok" if random.random() > 0.05 else random.choice(["warning", "error"])
+                        )
+                        log.batch_id = batch.id if batch else None
+                        log.ts_local = feed_time.astimezone(get_local_timezone())
+                        log.feed_amount_g = Decimal(str(feed_amount))
+                        log.run_time_s = run_time
+                        log.leftover_estimate_g = Decimal(str(leftover))
+                        db.session.add(log)
+                        feeder_log_count += 1
+                    current_date += timedelta(days=1)
+            db.session.commit()
+            print(f"  ✓ 喂食机记录生成完成，共 {feeder_log_count} 条")
         
-        # 8. 生成摄像头图片和健康检查（最近30天）
-        print("\n[8/9] 生成摄像头数据...")
+        # 8. 摄像头图片：有 CSV 则从 scripts/db_datas/camera_images.csv 导入；健康检查仍按需生成
         image_count = 0
         health_count = 0
-        end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(days=30)
+        if os.path.exists(CAMERA_IMAGES_CSV):
+            print(f"\n[8/9] 从 CSV 导入摄像头图片: {CAMERA_IMAGES_CSV}")
+            with open(CAMERA_IMAGES_CSV, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        csv_did = row.get("device_id")
+                        if not csv_did:
+                            continue
+                        device_pk = device_id_str_to_pk.get(f"camera_{int(csv_did):04d}")
+                        if not device_pk:
+                            continue
+                        pond_pk = pond_id_map.get(int(row["pond_id"])) if row.get("pond_id") else pond_4.id
+                        batch_pk = None
+                        if row.get("batch_id"):
+                            try:
+                                batch_pk = batch_id_map.get(int(row["batch_id"]))
+                            except (ValueError, TypeError):
+                                pass
+                        ts_utc = _parse_datetime(row.get("ts_utc") or row.get("ts_local") or row.get("timestamp_str"))
+                        image_url = (row.get("image_url") or "").strip()
+                        if not image_url:
+                            continue
+                        try:
+                            w = int(row.get("width") or 1920)
+                        except (TypeError, ValueError):
+                            w = 1920
+                        try:
+                            h = int(row.get("height") or 1080)
+                        except (TypeError, ValueError):
+                            h = 1080
+                        image = CameraImage(
+                            device_id=device_pk,
+                            pond_id=pond_pk,
+                            image_url=image_url,
+                            ts_utc=ts_utc,
+                            timestamp_str=(row.get("timestamp_str") or ts_utc.strftime("%Y-%m-%d %H:%M:%S")).strip(),
+                            width=w,
+                            height=h,
+                            format=(row.get("format") or "jpg").strip() or "jpg",
+                            size=int(row.get("size") or 0),
+                            fps=int(row.get("fps") or 0)
+                        )
+                        image.batch_id = batch_pk
+                        if row.get("storage_uri"):
+                            image.storage_uri = row["storage_uri"].strip()
+                        image.ts_local = ts_utc.astimezone(get_local_timezone())
+                        image.quality_flag = (row.get("quality_flag") or "ok").strip() or "ok"
+                        if row.get("checksum"):
+                            image.checksum = row["checksum"].strip()
+                        db.session.add(image)
+                        image_count += 1
+                        if image_count % 500 == 0:
+                            db.session.flush()
+                            print(f"  进度: {image_count} 条...")
+                    except Exception as e:
+                        if image_count < 3:
+                            print(f"  ⚠ 跳过行: {e}")
+            db.session.commit()
+            print(f"  ✓ 摄像头图片导入完成，共 {image_count} 条")
+        else:
+            print("\n[8/9] 生成摄像头数据...")
+            end_time = datetime.now(timezone.utc)
+            start_time = end_time - timedelta(days=30)
+            for device in camera_devices:
+                # 生成图片（每天10-20张）
+                current_date = start_time.date()
+                end_date = end_time.date()
+                while current_date <= end_date:
+                    image_times = random.randint(10, 20)
+                    for _ in range(image_times):
+                        hour = random.randint(0, 23)
+                        minute = random.randint(0, 59)
+                        img_time = datetime.combine(current_date, datetime.min.time().replace(hour=hour, minute=minute))
+                        img_time = img_time.replace(tzinfo=timezone.utc)
+                        batch = random.choice(batches) if batches else None
+                        image = CameraImage(
+                            device_id=device.id,
+                            pond_id=device.pond_id,
+                            image_url=f"https://storage.example.com/images/{device.device_id}/{img_time.strftime('%Y%m%d_%H%M%S')}.jpg",
+                            ts_utc=img_time,
+                            timestamp_str=img_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            width=1920,
+                            height=1080,
+                            format="jpg",
+                            size=random.randint(500000, 2000000)
+                        )
+                        image.batch_id = batch.id if batch else None
+                        image.storage_uri = f"images/{device.device_id}/{img_time.strftime('%Y%m%d_%H%M%S')}.jpg"
+                        image.ts_local = img_time.astimezone(get_local_timezone())
+                        image.quality_flag = "ok" if random.random() > 0.05 else "anomaly"
+                        db.session.add(image)
+                        image_count += 1
+                    current_date += timedelta(days=1)
+            db.session.commit()
+            print(f"  ✓ 摄像头图片生成完成，共 {image_count} 条")
         
-        for device in camera_devices:
-            # 生成图片（每天10-20张）
-            current_date = start_time.date()
-            end_date = end_time.date()
-            
-            while current_date <= end_date:
-                image_times = random.randint(10, 20)
-                for _ in range(image_times):
-                    hour = random.randint(0, 23)
-                    minute = random.randint(0, 59)
-                    img_time = datetime.combine(current_date, datetime.min.time().replace(hour=hour, minute=minute))
-                    img_time = img_time.replace(tzinfo=timezone.utc)
-                    
-                    # 随机选择一个批次
-                    batch = random.choice(batches) if batches else None
-                    
-                    # 创建对象，只传递可以在构造函数中使用的字段
-                    image = CameraImage(
-                        device_id=device.id,
-                        pond_id=device.pond_id,
-                        image_url=f"https://storage.example.com/images/{device.device_id}/{img_time.strftime('%Y%m%d_%H%M%S')}.jpg",
-                        ts_utc=img_time,
-                        timestamp_str=img_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        width=1920,
-                        height=1080,
-                        format="jpg",
-                        size=random.randint(500000, 2000000)
-                    )
-                    # 设置其他字段（这些字段设置了 init=False）
-                    image.batch_id = batch.id if batch else None
-                    image.storage_uri = f"images/{device.device_id}/{img_time.strftime('%Y%m%d_%H%M%S')}.jpg"
-                    image.ts_local = img_time.astimezone(get_local_timezone())
-                    image.quality_flag = "ok" if random.random() > 0.05 else "anomaly"
-                    
-                    db.session.add(image)
-                    image_count += 1
-                
-                # 每天生成1次健康检查
-                health_time = datetime.combine(current_date, datetime.min.time().replace(hour=12))
-                health_time = health_time.replace(tzinfo=timezone.utc)
-                health_timestamp = int(health_time.timestamp() * 1000)
-                
-                overall_score = round(random.uniform(70.0, 100.0), 2)
-                connectivity_score = random.randint(80, 100)
-                image_quality_score = random.randint(75, 100)
-                hardware_score = random.randint(70, 100)
-                storage_score = random.randint(80, 100)
-                
-                status_map = {
-                    (90, 100): "优秀",
-                    (80, 89): "良好",
-                    (70, 79): "一般",
-                    (60, 69): "需要维护",
-                    (0, 59): "离线"
-                }
-                
-                def get_status(score):
-                    for (low, high), status in status_map.items():
-                        if low <= score <= high:
-                            return status
-                    return "一般"
-                
-                # 创建对象，只传递可以在构造函数中使用的字段
-                health = CameraHealth(
-                    device_id=device.id,
-                    pond_id=device.pond_id,
-                    health_status=get_status(overall_score),
-                    overall_score=Decimal(str(overall_score)),
-                    connectivity_status=get_status(connectivity_score),
-                    connectivity_score=connectivity_score,
-                    connectivity_message="连接正常" if connectivity_score >= 90 else "连接不稳定",
-                    image_quality_status=get_status(image_quality_score),
-                    image_quality_score=image_quality_score,
-                    image_quality_message="图像清晰" if image_quality_score >= 90 else "图像质量一般",
-                    hardware_status=get_status(hardware_score),
-                    hardware_score=hardware_score,
-                    hardware_message="硬件正常" if hardware_score >= 90 else "硬件需要检查",
-                    storage_status=get_status(storage_score),
-                    storage_score=storage_score,
-                    storage_message="存储空间充足" if storage_score >= 90 else "存储空间紧张",
-                    timestamp=health_timestamp,
-                    last_check=health_time.strftime("%Y-%m-%d %H:%M:%S")
-                )
-                # 设置其他字段（这些字段设置了 init=False）
-                health.temperature = Decimal(str(round(random.uniform(20.0, 35.0), 2)))
-                health.uptime_hours = random.randint(100, 5000)
-                
-                db.session.add(health)
-                health_count += 1
-                
-                current_date += timedelta(days=1)
-        
-        db.session.commit()
-        print(f"  ✓ 摄像头图片生成完成，共 {image_count} 条")
-        print(f"  ✓ 摄像头健康检查生成完成，共 {health_count} 条")
-        
-        # 9. 生成预警规则和预警记录
-        print("\n[9/9] 生成预警规则和预警记录...")
+        # 9. 生成预警规则（不生成预警记录 mock 数据）
+        print("\n[9/9] 生成预警规则...")
         alert_rules = []
-        alert_notifications_list = []
         
         # 预警规则配置（为传感器设备创建预警规则）
         alert_rules_config = [
@@ -860,73 +1011,66 @@ def generate_mock_data():
             rule_counter += 1
         
         db.session.commit()
-        
-        # 为每个预警规则生成2-3条预警记录
-        notification_counter = 1
-        for rule in alert_rules:
-            # 每个规则生成2-3条预警记录
-            notification_count_per_rule = random.randint(2, 3)
-            
-            # 获取关联设备
-            device = db.session.query(Device).filter_by(id=rule.device_id).first()
-            device_name = device.name if device else "未知设备"
-            
-            for i in range(notification_count_per_rule):
-                notification_id = f"REC-{notification_counter:03d}"
-                existing = db.session.query(AlertNotification).filter_by(notification_id=notification_id).first()
-                
-                if existing:
-                    alert_notifications_list.append(existing)
-                else:
-                    # 生成随机触发时间（最近7天内）
-                    triggered_time = datetime.now(timezone.utc) - timedelta(
-                        days=random.randint(0, 7),
-                        hours=random.randint(0, 23),
-                        minutes=random.randint(0, 59)
-                    )
-                    # 根据规则生成预警内容和当前值
-                    if rule.metric == "do":
-                        current_val = round(random.uniform(3.5, 4.9), 2)
-                        content = f"溶解氧浓度低于阈值{rule.threshold}mg/L，当前值: {current_val}mg/L"
-                    elif rule.metric == "temperature":
-                        current_val = round(random.uniform(32.1, 35.0), 2)
-                        content = f"温度高于阈值{rule.threshold}°C，当前值: {current_val}°C"
-                    elif rule.metric == "PH":
-                        current_val = round(random.uniform(6.0, 6.9), 2)
-                        content = f"pH值低于阈值{rule.threshold}，当前值: {current_val}"
-                    else:
-                        current_val = round(random.uniform(0, 100), 2)
-                        content = f"{rule.metric}异常，当前值: {current_val}"
-                    
-                    # 创建预警记录
-                    notification = AlertNotification(
-                        notification_id=notification_id,
-                        alert_rule_id=rule.id,
-                        device_id=rule.device_id,
-                        content=content,
-                        triggered_at=triggered_time
-                    )
-                    # 设置其他字段（init=False 的字段）
-                    notification.current_value = str(current_val)
-                    notification.triggered_at_local = triggered_time.astimezone(get_local_timezone())
-                    
-                    # 随机设置状态（70%待处理，30%已解决）
-                    if random.random() > 0.7:
-                        notification.status = "resolved"
-                        resolved_time = triggered_time + timedelta(hours=random.randint(1, 24))
-                        notification.resolved_at = resolved_time
-                        notification.resolved_at_local = resolved_time.astimezone(get_local_timezone())
-                    else:
-                        notification.status = "pending"
-                    
-                    db.session.add(notification)
-                    alert_notifications_list.append(notification)
-                
-                notification_counter += 1
-        
-        db.session.commit()
         print(f"  ✓ 预警规则生成完成，共 {len(alert_rules)} 条")
-        print(f"  ✓ 预警记录生成完成，共 {len(alert_notifications_list)} 条")
+        
+        # 10. 从 CSV 导入 AI 决策（ai_decisions.csv）
+        ai_decision_count = 0
+        if os.path.exists(AI_DECISIONS_CSV):
+            print(f"\n[10/10] 从 CSV 导入 AI 决策: {AI_DECISIONS_CSV}")
+            with open(AI_DECISIONS_CSV, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        decision_id = (row.get("decision_id") or "").strip()
+                        if not decision_id:
+                            continue
+                        if db.session.query(AIDecision).filter_by(decision_id=decision_id).first():
+                            continue
+                        msg_type = (row.get("type") or "analysis").strip()
+                        message = (row.get("message") or "").strip()
+                        if not message:
+                            continue
+                        action = (row.get("action") or "").strip() or None
+                        source = (row.get("source") or "").strip() or None
+                        source_id = (row.get("source_id") or "").strip() or None
+                        expires_at = None
+                        if row.get("expires_at"):
+                            expires_at = _parse_datetime(row["expires_at"])
+                        try:
+                            priority = int(row.get("priority") or 0)
+                        except (TypeError, ValueError):
+                            priority = 0
+                        try:
+                            confidence = Decimal(str(row.get("confidence") or 0))
+                        except Exception:
+                            confidence = Decimal("0")
+                        status = (row.get("status") or "active").strip() or "active"
+                        if status not in ("active", "processed", "expired"):
+                            status = "active"
+                        rec = AIDecision(
+                            decision_id=decision_id,
+                            type=msg_type,
+                            message=message,
+                            action=action,
+                            source=source,
+                            source_id=source_id,
+                            expires_at=expires_at,
+                            priority=priority,
+                            confidence=confidence,
+                            status=status
+                        )
+                        db.session.add(rec)
+                        ai_decision_count += 1
+                        if ai_decision_count % 500 == 0:
+                            db.session.flush()
+                            print(f"  进度: {ai_decision_count} 条...")
+                    except Exception as e:
+                        if ai_decision_count < 3:
+                            print(f"  ⚠ 跳过行: {e}")
+            db.session.commit()
+            print(f"  ✓ AI 决策导入完成，共 {ai_decision_count} 条")
+        else:
+            print(f"\n[10/10] 跳过 AI 决策导入（文件不存在: {AI_DECISIONS_CSV}）")
         
         print("\n" + "=" * 60)
         print("Mock数据生成完成！")
@@ -941,9 +1085,8 @@ def generate_mock_data():
         print(f"  - 传感器读数: {reading_count} 条")
         print(f"  - 喂食机记录: {feeder_log_count} 条")
         print(f"  - 摄像头图片: {image_count} 条")
-        print(f"  - 健康检查: {health_count} 条")
         print(f"  - 预警规则: {len(alert_rules)} 条")
-        print(f"  - 预警记录: {len(alert_notifications_list)} 条")
+        print(f"  - AI 决策: {ai_decision_count} 条")
         print("=" * 60)
 
 
