@@ -61,7 +61,7 @@ def auth_required(fn):
                         "code": 401,
                         "msg": "未授权：缺少用户身份信息",
                         "data": {}
-                    }), 401
+                    }), 200
                 
                 logger.debug(f"JWT认证成功: user_id={user_id}, role={role}")
                 return fn(user_id=user_id, role=role, *args, **kwargs)
@@ -90,7 +90,7 @@ def auth_required(fn):
                     "code": 401,
                     "msg": f"认证失败: {error_msg}",
                     "data": {}
-                }), 401
+                }), 200
                 
         except Exception as e:
             logger.error(f"认证装饰器错误: {str(e)}", exc_info=True)
@@ -134,7 +134,7 @@ def token_required(fn):
                         "code": 401,
                         "msg": "未授权：缺少有效的认证令牌",
                         "data": {}
-                    }), 401
+                    }), 200
                 
                 # 验证JWT Token
                 verify_jwt_in_request()
@@ -147,7 +147,7 @@ def token_required(fn):
                         "code": 401,
                         "msg": "未授权：缺少用户身份信息",
                         "data": {}
-                    }), 401
+                    }), 200
                 
                 logger.debug(f"Token验证成功: user_id={user_id}")
                 return fn(*args, **kwargs)
@@ -163,7 +163,7 @@ def token_required(fn):
                     "code": 401,
                     "msg": f"认证失败: {error_msg}",
                     "data": {}
-                }), 401
+                }), 200
                 
         except Exception as e:
             logger.error(f"Token验证装饰器错误: {str(e)}", exc_info=True)

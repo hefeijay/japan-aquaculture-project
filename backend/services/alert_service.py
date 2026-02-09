@@ -504,7 +504,7 @@ class AlertService:
                 
                 # 分页，按更新时间倒序（最新的在最上面）
                 offset = (page - 1) * page_size
-                results = query.order_by(desc(AlertNotification.updated_at)).offset(offset).limit(page_size).all()
+                results = query.order_by(desc(AlertNotification.created_at)).offset(offset).limit(page_size).all()
                 
                 # 构建返回数据
                 items = []
