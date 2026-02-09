@@ -5,7 +5,7 @@ API路由蓝图
 包含所有API端点的路由定义
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from datetime import datetime
 import logging
 import time
@@ -535,17 +535,18 @@ def get_camera_status(device_id):
 @api_bp.route('/cameras/<int:device_id>/image', methods=['GET'])
 def get_camera_image(device_id):
     """
-    获取摄像头图片接口
+    获取摄像头图片接口 — 直接返回二进制图片数据
     
     Args:
         device_id: 摄像头设备ID（devices.id）
         
     Returns:
-        JSON格式的摄像头图片数据
+        二进制图片数据（image/jpeg 等），或 JSON 错误信息
     """
     try:
+        import os
         from services.camera_service import CameraService
-        # 从数据库获取摄像头图片数据
+        # 从数据库获取摄像头图片元数据
         image_data = CameraService.get_camera_image(device_id)
         if image_data is None:
             logger.error(f"摄像头设备{device_id}图片数据不可用，返回500")
@@ -555,11 +556,54 @@ def get_camera_image(device_id):
                 "timestamp": datetime.now().isoformat()
             }), 500
         
-        return jsonify({
-            "success": True,
-            "data": image_data,
-            "timestamp": datetime.now().isoformat()
-        })
+        # image_data['imageUrl'] 类似 /uploads/cameras/xxx.jpg
+        image_url = image_data.get('imageUrl', '')
+        if not image_url:
+            return jsonify({
+                "success": False,
+                "error": "图片路径为空",
+                "timestamp": datetime.now().isoformat()
+            }), 500
+        
+        # 将 URL 路径转为本地文件路径
+        # image_url 格式: /uploads/cameras/filename.jpg
+        # uploads 目录可能在 cwd 下，也可能在 cwd 的父级目录下
+        relative_path = image_url.lstrip('/')  # -> uploads/cameras/filename.jpg
+        
+        # 按优先级搜索文件：cwd -> cwd的父目录 -> cwd的祖父目录
+        search_bases = [
+            os.getcwd(),
+            os.path.dirname(os.getcwd()),
+            os.path.dirname(os.path.dirname(os.getcwd())),
+        ]
+        file_path = None
+        for base in search_bases:
+            candidate = os.path.join(base, relative_path)
+            if os.path.isfile(candidate):
+                file_path = candidate
+                break
+        
+        if file_path is None:
+            tried = [os.path.join(b, relative_path) for b in search_bases]
+            logger.error(f"摄像头设备{device_id}图片文件不存在，尝试路径: {tried}")
+            return jsonify({
+                "success": False,
+                "error": "图片文件不存在",
+                "timestamp": datetime.now().isoformat()
+            }), 404
+        
+        # 根据格式确定 MIME 类型
+        fmt = image_data.get('format', 'jpeg').lower()
+        mime_map = {
+            'jpeg': 'image/jpeg',
+            'jpg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+        }
+        mimetype = mime_map.get(fmt, 'image/jpeg')
+        
+        return send_file(file_path, mimetype=mimetype)
         
     except Exception as e:
         logger.error(f"摄像头设备{device_id}图片获取失败: {str(e)}")
