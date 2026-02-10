@@ -32,7 +32,7 @@ from config.settings import Config
 from db_models import (
     db, Pond, Batch, DeviceType, SensorType, Device, 
     SensorReading, FeederLog, CameraImage, User,
-    AlertRule, AIDecision
+    AlertRule, AIDecision, Prompt
 )
 
 
@@ -71,6 +71,25 @@ FEEDERS_LOGS_CSV = os.path.join(DB_DATAS_DIR, "feeders_logs.csv")
 CAMERA_IMAGES_CSV = os.path.join(DB_DATAS_DIR, "camera_images.csv")
 SENSOR_READINGS_CSV = os.path.join(DB_DATAS_DIR, "sensor_readings.csv")
 AI_DECISIONS_CSV = os.path.join(DB_DATAS_DIR, "ai_decisions.csv")
+PROMPTS_CSV = os.path.join(DB_DATAS_DIR, "prompts.csv")
+
+# CSV 导入开关：控制是否从 CSV 导入数据（True=导入CSV，False=生成mock数据）
+ENABLE_CSV_IMPORT = {
+    "sensor_readings": True,    # 传感器读数
+    "feeders_logs": True,        # 喂食机记录
+    "camera_images": False,      # 摄像头图片（已禁用，不导入CSV也不生成mock）
+    "ai_decisions": True,        # AI决策
+    "prompts": True,             # Prompts
+}
+
+# 数据生成开关：控制是否需要该类型的数据（True=需要，False=完全跳过）
+ENABLE_DATA_GENERATION = {
+    "sensor_readings": True,     # 传感器读数
+    "feeders_logs": True,         # 喂食机记录
+    "camera_images": False,       # 摄像头图片（完全不需要）
+    "ai_decisions": True,         # AI决策
+    "prompts": True,              # Prompts
+}
 # ====================================================
 
 # 8种传感器类型配置（匹配数据库表结构）
@@ -652,7 +671,7 @@ def generate_mock_data():
         
         # 6. 传感器读数：有 CSV 则从 scripts/db_datas/sensor_readings.csv 导入，否则生成
         reading_count = 0
-        if os.path.exists(SENSOR_READINGS_CSV):
+        if ENABLE_CSV_IMPORT.get("sensor_readings", True) and os.path.exists(SENSOR_READINGS_CSV):
             print(f"\n[6/9] 从 CSV 导入传感器读数: {SENSOR_READINGS_CSV}")
             with open(SENSOR_READINGS_CSV, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
@@ -739,7 +758,7 @@ def generate_mock_data():
         
         # 7. 喂食机记录：有 CSV 则从 scripts/db_datas/feeders_logs.csv 导入，否则生成
         feeder_log_count = 0
-        if os.path.exists(FEEDERS_LOGS_CSV):
+        if ENABLE_CSV_IMPORT.get("feeders_logs", True) and os.path.exists(FEEDERS_LOGS_CSV):
             print(f"\n[7/9] 从 CSV 导入喂食机记录: {FEEDERS_LOGS_CSV}")
             with open(FEEDERS_LOGS_CSV, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
@@ -833,7 +852,9 @@ def generate_mock_data():
         # 8. 摄像头图片：有 CSV 则从 scripts/db_datas/camera_images.csv 导入；健康检查仍按需生成
         image_count = 0
         health_count = 0
-        if os.path.exists(CAMERA_IMAGES_CSV):
+        if not ENABLE_DATA_GENERATION.get("camera_images", True):
+            print("\n[8/9] 跳过摄像头图片数据生成（已配置为不需要）")
+        elif ENABLE_CSV_IMPORT.get("camera_images", True) and os.path.exists(CAMERA_IMAGES_CSV):
             print(f"\n[8/9] 从 CSV 导入摄像头图片: {CAMERA_IMAGES_CSV}")
             with open(CAMERA_IMAGES_CSV, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
@@ -1015,8 +1036,8 @@ def generate_mock_data():
         
         # 10. 从 CSV 导入 AI 决策（ai_decisions.csv）
         ai_decision_count = 0
-        if os.path.exists(AI_DECISIONS_CSV):
-            print(f"\n[10/10] 从 CSV 导入 AI 决策: {AI_DECISIONS_CSV}")
+        if ENABLE_CSV_IMPORT.get("ai_decisions", True) and os.path.exists(AI_DECISIONS_CSV):
+            print(f"\n[10/11] 从 CSV 导入 AI 决策: {AI_DECISIONS_CSV}")
             with open(AI_DECISIONS_CSV, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
@@ -1070,7 +1091,51 @@ def generate_mock_data():
             db.session.commit()
             print(f"  ✓ AI 决策导入完成，共 {ai_decision_count} 条")
         else:
-            print(f"\n[10/10] 跳过 AI 决策导入（文件不存在: {AI_DECISIONS_CSV}）")
+            print(f"\n[10/11] 跳过 AI 决策导入（文件不存在: {AI_DECISIONS_CSV}）")
+        
+        # 11. 从 CSV 导入 Prompts（prompts.csv）
+        prompt_count = 0
+        if ENABLE_CSV_IMPORT.get("prompts", True) and os.path.exists(PROMPTS_CSV):
+            print(f"\n[11/11] 从 CSV 导入 Prompts: {PROMPTS_CSV}")
+            with open(PROMPTS_CSV, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        agent_name = (row.get("agent_name") or "").strip()
+                        if not agent_name:
+                            continue
+                        template_key = (row.get("template_key") or "").strip() or None
+                        template = (row.get("template") or "").strip()
+                        if not template:
+                            continue
+                        # 检查是否已存在（根据唯一约束：agent_name + template_key）
+                        existing = db.session.query(Prompt).filter_by(
+                            agent_name=agent_name,
+                            template_key=template_key
+                        ).first()
+                        if existing:
+                            continue
+                        description = (row.get("description") or "").strip() or None
+                        version = (row.get("version") or "").strip() or None
+                        prompt = Prompt(
+                            agent_name=agent_name,
+                            template_key=template_key,
+                            description=description,
+                            version=version,
+                            template=template
+                        )
+                        db.session.add(prompt)
+                        prompt_count += 1
+                        if prompt_count % 100 == 0:
+                            db.session.flush()
+                            print(f"  进度: {prompt_count} 条...")
+                    except Exception as e:
+                        if prompt_count < 3:
+                            print(f"  ⚠ 跳过行: {e}")
+            db.session.commit()
+            print(f"  ✓ Prompts 导入完成，共 {prompt_count} 条")
+        else:
+            print(f"\n[11/11] 跳过 Prompts 导入（文件不存在: {PROMPTS_CSV}）")
         
         print("\n" + "=" * 60)
         print("Mock数据生成完成！")
@@ -1087,6 +1152,7 @@ def generate_mock_data():
         print(f"  - 摄像头图片: {image_count} 条")
         print(f"  - 预警规则: {len(alert_rules)} 条")
         print(f"  - AI 决策: {ai_decision_count} 条")
+        print(f"  - Prompts: {prompt_count} 条")
         print("=" * 60)
 
 
