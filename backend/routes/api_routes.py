@@ -553,36 +553,45 @@ def get_camera_image(device_id):
                 "timestamp": datetime.now().isoformat()
             }), 500
         
-        # image_data['imageUrl'] 类似 /uploads/cameras/xxx.jpg
-        image_url = image_data.get('imageUrl', '')
-        if not image_url:
-            return jsonify({
-                "success": False,
-                "error": "图片路径为空",
-                "timestamp": datetime.now().isoformat()
-            }), 500
-        
-        # 将 URL 路径转为本地文件路径
-        # image_url 格式: /uploads/cameras/filename.jpg
-        # uploads 目录可能在 cwd 下，也可能在 cwd 的父级目录下
-        relative_path = image_url.lstrip('/')  # -> uploads/cameras/filename.jpg
-        
-        # 按优先级搜索文件：cwd -> cwd的父目录 -> cwd的祖父目录
-        search_bases = [
-            os.getcwd(),
-            os.path.dirname(os.getcwd()),
-            os.path.dirname(os.path.dirname(os.getcwd())),
-        ]
+        # 优先使用 storage_url（绝对路径）
+        storage_url = image_data.get('storageUrl')
         file_path = None
-        for base in search_bases:
-            candidate = os.path.join(base, relative_path)
-            if os.path.isfile(candidate):
-                file_path = candidate
-                break
+        
+        if storage_url and os.path.isfile(storage_url):
+            # 新数据：直接使用绝对路径
+            file_path = storage_url
+        else:
+            # fallback: 用 imageUrl 搜索（兼容旧数据）
+            image_url = image_data.get('imageUrl', '')
+            if not image_url:
+                return jsonify({
+                    "success": False,
+                    "error": "图片路径为空",
+                    "timestamp": datetime.now().isoformat()
+                }), 500
+            
+            # 将 URL 路径转为本地文件路径
+            # image_url 格式: /uploads/cameras/filename.jpg
+            relative_path = image_url.lstrip('/')  # -> uploads/cameras/filename.jpg
+            
+            # 按优先级搜索文件：cwd -> cwd的父目录 -> cwd的祖父目录
+            search_bases = [
+                os.getcwd(),
+                os.path.dirname(os.getcwd()),
+                os.path.dirname(os.path.dirname(os.getcwd())),
+            ]
+            for base in search_bases:
+                candidate = os.path.join(base, relative_path)
+                if os.path.isfile(candidate):
+                    file_path = candidate
+                    break
         
         if file_path is None:
-            tried = [os.path.join(b, relative_path) for b in search_bases]
-            logger.error(f"摄像头设备{device_id}图片文件不存在，尝试路径: {tried}")
+            if storage_url:
+                logger.error(f"摄像头设备{device_id}图片文件不存在: {storage_url}")
+            else:
+                tried = [os.path.join(b, image_url.lstrip('/')) for b in search_bases] if image_url else []
+                logger.error(f"摄像头设备{device_id}图片文件不存在，尝试路径: {tried}")
             return jsonify({
                 "success": False,
                 "error": "图片文件不存在",

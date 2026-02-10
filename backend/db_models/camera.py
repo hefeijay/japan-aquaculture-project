@@ -79,10 +79,10 @@ class CameraImage(Base):
         comment="图片URL"
     )
     
-    # 对象存储路径/URI
-    storage_uri: Mapped[Optional[str]] = mapped_column(
+    # 对象存储路径/URL
+    storage_url: Mapped[Optional[str]] = mapped_column(
         String(512),
-        comment="对象存储路径/URI",
+        comment="对象存储路径/URL",
         init=False
     )
     

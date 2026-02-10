@@ -220,8 +220,8 @@ def migrate_camera_images(session, camera_id_map):
                     # 映射 batch_id: CSV中的2 -> 数据库中的1
                     csv_batch_id = int(row['batch_id'])
                     camera_image.batch_id = 1 if csv_batch_id == 2 else csv_batch_id
-                if row.get('storage_uri'):
-                    camera_image.storage_uri = row['storage_uri']
+                if row.get('storage_url'):
+                    camera_image.storage_url = row['storage_url']
                 if row.get('ts_local'):
                     try:
                         camera_image.ts_local = datetime.strptime(row['ts_local'], '%Y-%m-%d %H:%M:%S.%f')

@@ -130,6 +130,7 @@ class CameraService:
                     "location": device.location or "",
                     "status": cls._translate_status(device.status),  # 翻译为中文
                     "imageUrl": latest_image.image_url,
+                    "storageUrl": latest_image.storage_url,  # 绝对路径
                     "lastUpdate": int(latest_image.ts_utc.timestamp() * 1000) if latest_image.ts_utc else int(time.time() * 1000),
                     "timestamp": int(latest_image.ts_utc.timestamp() * 1000) if latest_image.ts_utc else int(time.time() * 1000),
                     "timestampStr": latest_image.timestamp_str,

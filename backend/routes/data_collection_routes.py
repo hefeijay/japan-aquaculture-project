@@ -848,8 +848,8 @@ def receive_camera_data():
             # 如果没有文件名，使用时间戳生成
             filename = f"camera_{camera_id}_{timestamp_ms}.{format_str}"
         
-        # 创建上传目录（实际应该使用对象存储）
-        upload_dir = os.path.join(os.getcwd(), 'uploads', 'cameras')
+        # 创建上传目录（使用固定绝对路径）
+        upload_dir = os.path.join('/home/gmm/srv', 'uploads', 'cameras')
         os.makedirs(upload_dir, exist_ok=True)
         
         # 保存文件
@@ -873,9 +873,10 @@ def receive_camera_data():
             except Exception as e:
                 logger.warning(f"读取图像尺寸失败: {e}")
         
-        # 生成图片URL（实际应该使用对象存储URL）
+        # 生成图片URL（前端访问用的相对路径，不变）
         image_url = f"/uploads/cameras/{filename}"
-        storage_uri = file_path  # 实际应该使用对象存储URI
+        # 存储路径使用绝对路径
+        storage_url = os.path.abspath(file_path)
         
         # 生成校验和
         checksum_data = {
@@ -955,8 +956,8 @@ def receive_camera_data():
             # 设置 init=False 的字段（通过属性赋值）
             if batch_db_id is not None:
                 camera_image.batch_id = batch_db_id
-            if storage_uri is not None:
-                camera_image.storage_uri = storage_uri
+            if storage_url is not None:
+                camera_image.storage_url = storage_url
             if ts_local is not None:
                 camera_image.ts_local = ts_local
             camera_image.quality_flag = quality_flag
