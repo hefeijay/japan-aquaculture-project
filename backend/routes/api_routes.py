@@ -37,11 +37,8 @@ logger = logging.getLogger(__name__)
 # camera_index 映射表：客户端传入的 camera_index -> 实际数据库中的 device_id
 # 请根据实际情况修改映射关系
 CAMERA_INDEX_MAPPING = {
-    0: 8,   # camera_index 0 -> 映射到设备ID 8
-    1: 9,   # camera_index 1 -> 映射到设备ID 9
-    2: 10,  # camera_index 2 -> 映射到设备ID 10
-    3: 11,  # camera_index 3 -> 映射到设备ID 11
-    4: 12,  # camera_index 4 -> 映射到设备ID 12
+    1: 6,   # camera_index 1 -> 映射到设备ID 9
+    2: 7,  # camera_index 2 -> 映射到设备ID 10
 }
 
 def generate_device_id(device_type_category: str, session) -> str:
