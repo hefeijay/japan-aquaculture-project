@@ -220,7 +220,7 @@ class Config:
     # 周期聚合任务配置（可通过环境变量覆盖）
     AGGREGATOR_INTERVAL_SECONDS = int(os.getenv('AGGREGATOR_INTERVAL_SECONDS', '3600'))
     AGGREGATOR_DEFAULT_WINDOW_MINUTES = int(os.getenv('AGGREGATOR_DEFAULT_WINDOW_MINUTES', '60'))
-    AGGREGATOR_DEFAULT_POND_ID = os.getenv('AGGREGATOR_DEFAULT_POND_ID', '1')
+    AGGREGATOR_DEFAULT_POND_ID = os.getenv('AGGREGATOR_DEFAULT_POND_ID', '4')
     
     # 文件转发配置（可通过环境变量覆盖）
     FILE_FORWARD_URL = os.getenv('FILE_FORWARD_URL', 'http://8.216.33.92:5003/process_file')  # 默认转发到 8.216.33.92/process_file

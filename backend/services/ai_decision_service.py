@@ -32,7 +32,7 @@ class AIDecisionService:
         return datetime.now().strftime("%H:%M:%S")
     
     @classmethod
-    def get_recent_decisions(cls, num_messages: int = None, max_age_hours: int = 24) -> List[Dict[str, Any]]:
+    def get_recent_decisions(cls, num_messages: int = 10, max_age_hours: int = 24) -> List[Dict[str, Any]]:
         """
         从数据库获取最近的AI决策消息
         
@@ -61,8 +61,7 @@ class AIDecisionService:
                 ).order_by(desc(AIDecision.priority), desc(AIDecision.created_at))
                 
                 # 限制数量
-                if num_messages:
-                    query = query.limit(num_messages)
+                query = query.limit(num_messages)
                 
                 decisions = query.all()
                 
@@ -329,4 +328,4 @@ class DecisionRuleEngine:
                 
         except Exception as e:
             print(f"创建决策规则时发生错误: {e}")
-            return None
+            return None           

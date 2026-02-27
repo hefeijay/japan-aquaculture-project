@@ -313,7 +313,8 @@ def generate_mock_data():
         users_config = [
             {"username": "gmm", "user_id": "USER_GMM", "role": "admin"},
             {"username": "admin", "user_id": "USER_ADMIN", "role": "admin"},
-            {"username": "fish", "user_id": "USER_FISH", "role": "user"}
+            {"username": "fish", "user_id": "USER_FISH", "role": "user"},
+            {"username": "henry", "user_id": "USER_HENRY", "role": "user"} 
         ]
         password = "123456"
         # 使用MD5哈希（32字符），符合password_hash字段String(128)的限制
@@ -962,7 +963,7 @@ def generate_mock_data():
                 "severity_level": "critical",
                 "trigger_condition": "below",
                 "threshold": "5.0",
-                "check_interval": 5,
+                "check_interval": 10,
                 "check_interval_unit": "minute",
                 "description": "溶解氧浓度过低预警"
             },
@@ -980,7 +981,7 @@ def generate_mock_data():
                 "severity_level": "warning",
                 "trigger_condition": "below",
                 "threshold": "7.0",
-                "check_interval": 15,
+                "check_interval": 10,
                 "check_interval_unit": "minute",
                 "description": "pH值过低预警"
             }

@@ -230,7 +230,7 @@ def get_ai_decisions():
     """
     try:
         # 从数据库获取AI决策消息
-        decisions = AIDecisionService.get_recent_decisions()
+        decisions = AIDecisionService.get_recent_decisions(num_messages=10)
         if not decisions:
             logger.error("AI决策消息为空或获取失败，返回500")
             return jsonify({
