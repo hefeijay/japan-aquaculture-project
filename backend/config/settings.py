@@ -249,3 +249,12 @@ class Config:
     
     # 线程池大小：最多同时执行多少个不同规则的检查任务
     ALERT_SCHEDULER_THREAD_POOL_SIZE = int(os.getenv('ALERT_SCHEDULER_THREAD_POOL_SIZE', '10'))
+
+    # ==================== 心跳 WebSocket 监控配置 ====================
+    HEARTBEAT_WS_PORT = int(os.getenv('HEARTBEAT_WS_PORT', '12800'))
+    HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv('HEARTBEAT_TIMEOUT_SECONDS', '300'))
+    HEARTBEAT_CHECK_INTERVAL_SECONDS = int(os.getenv('HEARTBEAT_CHECK_INTERVAL_SECONDS', '30'))
+    HEARTBEAT_ALERT_COOLDOWN_SECONDS = int(os.getenv('HEARTBEAT_ALERT_COOLDOWN_SECONDS', '3600'))
+    DINGTALK_ALERT_AT_MOBILES = [
+        m.strip() for m in os.getenv('DINGTALK_ALERT_AT_MOBILES', '').split(',') if m.strip()
+    ]
