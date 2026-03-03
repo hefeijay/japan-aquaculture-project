@@ -102,6 +102,7 @@ def create_app(config_class=Config):
     from routes.data_collection_routes import data_collection_bp
     from routes.file_upload_routes import file_upload_bp
     from routes.alert_routes import alert_bp
+    from routes.work_task_routes import work_task_bp
     
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
@@ -110,6 +111,7 @@ def create_app(config_class=Config):
     app.register_blueprint(data_collection_bp)
     app.register_blueprint(file_upload_bp)
     app.register_blueprint(alert_bp)
+    app.register_blueprint(work_task_bp)
     
     logger.info("所有蓝图注册完成")
     

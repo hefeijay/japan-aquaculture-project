@@ -46,6 +46,14 @@
     {
       "name": "设备预警",
       "description": "设备预警规则管理和预警通知处理"
+    },
+    {
+      "name": "用户管理",
+      "description": "用户信息查询，用于任务指派等场景"
+    },
+    {
+      "name": "任务管理中心",
+      "description": "业务任务的创建、编辑、撤销和查询管理"
     }
   ],
   "paths": {
@@ -2641,6 +2649,536 @@
           }
         }
       }
+    },
+    "/users/active": {
+      "get": {
+        "tags": ["用户管理"],
+        "summary": "获取活跃用户列表",
+        "description": "获取所有状态为 active 的用户列表（轻量接口），用于任务创建/编辑时选择负责人",
+        "operationId": "getActiveUsers",
+        "responses": {
+          "200": {
+            "description": "成功获取活跃用户列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ActiveUserItem"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": [
+                    {
+                      "id": 1,
+                      "user_id": "USR_001",
+                      "username": "张三"
+                    },
+                    {
+                      "id": 2,
+                      "user_id": "USR_002",
+                      "username": "李四"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/work-tasks": {
+      "get": {
+        "tags": ["任务管理中心"],
+        "summary": "查询任务列表",
+        "description": "获取任务列表，支持按状态、优先级筛选，支持按任务名称（topic）、任务业务ID（task_id）、负责人用户名（username）模糊搜索，支持分页。按更新时间倒序排列（最新的在最上面）。",
+        "operationId": "getWorkTaskList",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "按状态筛选（pending=待处理/in_progress=进行中/completed=已完成）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed"]
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "description": "按优先级筛选（high=高/medium=中/low=低）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["high", "medium", "low"]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "搜索关键词（按任务名称 topic、任务业务ID task_id、负责人用户名 username 模糊搜索）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "检查溶解氧"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（从1开始）",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取任务列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/WorkTaskDetail"
+                          }
+                        },
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 1,
+                        "task_id": "TASK-2026-0001",
+                        "topic": "检查1号池溶解氧设备",
+                        "priority": "high",
+                        "status": "pending",
+                        "creator_id": 1,
+                        "creator_name": "张三",
+                        "assignee_id": 2,
+                        "assignee_name": "李四",
+                        "pond_id": 1,
+                        "pond_name": "1号养殖池",
+                        "deadline": "2026-03-01T18:00:00Z",
+                        "description": "溶解氧传感器读数异常，需现场检查",
+                        "completed_at": null,
+                        "created_at": "2026-02-27T10:00:00Z",
+                        "updated_at": "2026-02-27T10:00:00Z"
+                      },
+                      {
+                        "id": 2,
+                        "task_id": "TASK-2026-0002",
+                        "topic": "更换2号池pH传感器",
+                        "priority": "medium",
+                        "status": "completed",
+                        "creator_id": 1,
+                        "creator_name": "张三",
+                        "assignee_id": 3,
+                        "assignee_name": "王五",
+                        "pond_id": 2,
+                        "pond_name": "2号养殖池",
+                        "deadline": "2026-02-28T18:00:00Z",
+                        "description": "pH传感器老化，需更换新设备",
+                        "completed_at": "2026-02-28T14:30:00Z",
+                        "created_at": "2026-02-25T09:00:00Z",
+                        "updated_at": "2026-02-28T14:30:00Z"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "page_size": 20,
+                      "total": 15,
+                      "total_pages": 1,
+                      "has_next": false,
+                      "has_prev": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["任务管理中心"],
+        "summary": "创建新任务",
+        "description": "创建新的业务任务。任务业务ID（task_id）由系统自动生成，格式为 TASK-{年份}-{序号}（如 TASK-2026-0001）。\n\n**立即执行功能**：\n当 `execute_immediately=true` 时，任务创建后直接标记为 `completed` 状态，并自动设置 `completed_at` 为当前时间。\n\n**必填字段**：\n- `topic`: 任务名称\n- `priority`: 优先级（high/medium/low）\n- `creator_name`: 创建人用户名（user.username）\n- `assignee_id`: 负责人ID（user.id）\n\n**可选字段**：\n- `pond_id`: 关联池位ID（ponds.id）\n- `deadline`: 截止时间（ISO 8601 格式）\n- `status`: 状态（pending/in_progress，默认 pending）\n- `description`: 任务描述\n- `execute_immediately`: 是否立即执行（默认 false）",
+        "operationId": "createWorkTask",
+        "requestBody": {
+          "description": "新任务信息",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkTaskCreateRequest"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "创建普通任务",
+                  "value": {
+                    "topic": "检查1号池溶解氧设备",
+                    "priority": "high",
+                    "creator_name": "张三",
+                    "assignee_id": 2,
+                    "pond_id": 1,
+                    "deadline": "2026-03-01T18:00:00Z",
+                    "status": "pending",
+                    "description": "溶解氧传感器读数异常，需现场检查"
+                  }
+                },
+                "executeImmediately": {
+                  "summary": "创建并立即执行",
+                  "value": {
+                    "topic": "紧急检查水泵运行状态",
+                    "priority": "high",
+                    "creator_name": "张三",
+                    "assignee_id": 2,
+                    "pond_id": 1,
+                    "description": "水泵噪音异常，需立即检查",
+                    "execute_immediately": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "任务创建成功"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkTaskDetail"
+                    }
+                  }
+                },
+                "examples": {
+                  "normal": {
+                    "summary": "普通创建",
+                    "value": {
+                      "code": 200,
+                      "message": "任务创建成功",
+                      "data": {
+                        "id": 1,
+                        "task_id": "TASK-2026-0001",
+                        "topic": "检查1号池溶解氧设备",
+                        "priority": "high",
+                        "status": "pending",
+                        "creator_id": 1,
+                        "creator_name": "张三",
+                        "assignee_id": 2,
+                        "assignee_name": "李四",
+                        "pond_id": 1,
+                        "pond_name": "1号养殖池",
+                        "deadline": "2026-03-01T18:00:00Z",
+                        "description": "溶解氧传感器读数异常，需现场检查",
+                        "completed_at": null,
+                        "created_at": "2026-02-27T10:00:00Z",
+                        "updated_at": "2026-02-27T10:00:00Z"
+                      }
+                    }
+                  },
+                  "executeImmediately": {
+                    "summary": "立即执行",
+                    "value": {
+                      "code": 200,
+                      "message": "任务创建成功（已立即执行）",
+                      "data": {
+                        "id": 2,
+                        "task_id": "TASK-2026-0002",
+                        "topic": "紧急检查水泵运行状态",
+                        "priority": "high",
+                        "status": "completed",
+                        "creator_id": 1,
+                        "creator_name": "张三",
+                        "assignee_id": 2,
+                        "assignee_name": "李四",
+                        "pond_id": 1,
+                        "pond_name": "1号养殖池",
+                        "deadline": null,
+                        "description": "水泵噪音异常，需立即检查",
+                        "completed_at": "2026-02-27T10:00:00Z",
+                        "created_at": "2026-02-27T10:00:00Z",
+                        "updated_at": "2026-02-27T10:00:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/work-tasks/{id}": {
+      "put": {
+        "tags": ["任务管理中心"],
+        "summary": "编辑任务",
+        "description": "更新任务信息，支持部分更新。\n\n**可更新字段**：\n- `topic`: 任务名称\n- `priority`: 优先级（high/medium/low）\n- `assignee_id`: 负责人ID\n- `pond_id`: 关联池位ID\n- `deadline`: 截止时间\n- `status`: 状态（pending/in_progress/completed）\n- `description`: 任务描述\n- `execute_immediately`: 是否立即执行\n\n**立即执行功能**：\n当 `execute_immediately=true` 时，任务状态改为 `completed`，并自动设置 `completed_at`。\n\n**注意**：已完成的任务不允许再修改状态为 pending 或 in_progress。",
+        "operationId": "updateWorkTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务主键ID（work_tasks.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "更新的任务信息（支持部分更新）",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkTaskUpdateRequest"
+              },
+              "examples": {
+                "updateFields": {
+                  "summary": "更新部分字段",
+                  "value": {
+                    "priority": "medium",
+                    "assignee_id": 3,
+                    "deadline": "2026-03-05T18:00:00Z",
+                    "description": "更新：已联系设备厂商，等待配件到货后处理"
+                  }
+                },
+                "executeImmediately": {
+                  "summary": "立即执行完成",
+                  "value": {
+                    "execute_immediately": true
+                  }
+                },
+                "changeStatus": {
+                  "summary": "修改状态为进行中",
+                  "value": {
+                    "status": "in_progress"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "任务更新成功"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkTaskDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误或状态冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "已完成的任务不允许修改状态为待处理或进行中"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["任务管理中心"],
+        "summary": "撤销（删除）任务",
+        "description": "撤销指定任务（物理删除）。\n\n**撤销规则**：\n- 仅 `pending`（待处理）和 `in_progress`（进行中）状态的任务可以撤销\n- `completed`（已完成）状态的任务不可撤销，返回 400 错误",
+        "operationId": "deleteWorkTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务主键ID（work_tasks.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务撤销成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "任务已撤销"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": "被撤销的任务主键ID",
+                          "example": 1
+                        },
+                        "task_id": {
+                          "type": "string",
+                          "description": "被撤销的任务业务ID",
+                          "example": "TASK-2026-0001"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "已完成的任务不可撤销",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "已完成的任务不可撤销"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3916,6 +4454,244 @@
             "format": "date-time",
             "description": "更新时间",
             "example": "2026-01-14T12:00:00Z"
+          }
+        }
+      },
+      "ActiveUserItem": {
+        "type": "object",
+        "description": "活跃用户列表项（轻量，用于任务指派）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "用户主键ID（user.id）",
+            "example": 1
+          },
+          "user_id": {
+            "type": "string",
+            "description": "用户业务ID",
+            "example": "USR_001"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名",
+            "example": "张三"
+          }
+        }
+      },
+      "WorkTaskDetail": {
+        "type": "object",
+        "description": "任务详细信息（关联查询包含创建人、负责人、池位名称）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "任务主键ID",
+            "example": 1
+          },
+          "task_id": {
+            "type": "string",
+            "description": "任务业务ID（系统自动生成，如 TASK-2026-0001）",
+            "example": "TASK-2026-0001"
+          },
+          "topic": {
+            "type": "string",
+            "description": "任务名称",
+            "example": "检查1号池溶解氧设备"
+          },
+          "priority": {
+            "type": "string",
+            "description": "优先级",
+            "enum": ["high", "medium", "low"],
+            "example": "high"
+          },
+          "status": {
+            "type": "string",
+            "description": "状态",
+            "enum": ["pending", "in_progress", "completed"],
+            "example": "pending"
+          },
+          "creator_id": {
+            "type": "integer",
+            "description": "创建人ID（FK → user.id）",
+            "example": 1
+          },
+          "creator_name": {
+            "type": "string",
+            "description": "创建人用户名（关联查询）",
+            "example": "张三"
+          },
+          "assignee_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "负责人ID（FK → user.id）",
+            "example": 2
+          },
+          "assignee_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "负责人用户名（关联查询）",
+            "example": "李四"
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "关联池位ID（FK → ponds.id）",
+            "example": 1
+          },
+          "pond_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "关联池位名称（关联查询）",
+            "example": "1号养殖池"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "截止时间",
+            "example": "2026-03-01T18:00:00Z"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "任务描述",
+            "example": "溶解氧传感器读数异常，需现场检查"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "完成时间",
+            "example": null
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间",
+            "example": "2026-02-27T10:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间",
+            "example": "2026-02-27T10:00:00Z"
+          }
+        }
+      },
+      "WorkTaskCreateRequest": {
+        "type": "object",
+        "description": "创建任务请求体\n\n**必填字段**：\n- `topic`: 任务名称\n- `priority`: 优先级（high/medium/low）\n- `creator_name`: 创建人用户名（user.username）\n- `assignee_id`: 负责人ID（user.id）\n\n**可选字段**：\n- `pond_id`: 关联池位ID（ponds.id）\n- `deadline`: 截止时间（ISO 8601）\n- `status`: 状态（pending/in_progress，默认 pending）\n- `description`: 任务描述\n- `execute_immediately`: 是否立即执行（默认 false，为 true 时任务直接标记为 completed）",
+        "required": ["topic", "priority", "creator_name", "assignee_id"],
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "任务名称（必填）",
+            "example": "检查1号池溶解氧设备",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "priority": {
+            "type": "string",
+            "description": "优先级（必填）",
+            "enum": ["high", "medium", "low"],
+            "example": "high"
+          },
+          "creator_name": {
+            "type": "string",
+            "description": "创建人用户名（必填，后端通过用户名查找对应用户）",
+            "example": "张三"
+          },
+          "assignee_id": {
+            "type": "integer",
+            "description": "负责人ID（必填，FK → user.id）",
+            "example": 2
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "关联池位ID（可选，FK → ponds.id）",
+            "example": 1
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "截止时间（可选，ISO 8601 格式）",
+            "example": "2026-03-01T18:00:00Z"
+          },
+          "status": {
+            "type": "string",
+            "description": "状态（可选，默认 pending）",
+            "enum": ["pending", "in_progress"],
+            "default": "pending",
+            "example": "pending"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "任务描述（可选）",
+            "example": "溶解氧传感器读数异常，需现场检查"
+          },
+          "execute_immediately": {
+            "type": "boolean",
+            "description": "是否立即执行（可选，默认 false）。为 true 时任务创建后直接标记为 completed 并设置 completed_at",
+            "default": false,
+            "example": false
+          }
+        }
+      },
+      "WorkTaskUpdateRequest": {
+        "type": "object",
+        "description": "更新任务请求体（支持部分更新）\n\n所有字段均为可选，只传需要更新的字段即可。\n\n**注意**：已完成的任务不允许修改状态为 pending 或 in_progress。",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "任务名称",
+            "example": "检查1号池溶解氧设备（已更新）",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "priority": {
+            "type": "string",
+            "description": "优先级",
+            "enum": ["high", "medium", "low"],
+            "example": "medium"
+          },
+          "assignee_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "负责人ID（FK → user.id）",
+            "example": 3
+          },
+          "pond_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "关联池位ID（FK → ponds.id）",
+            "example": 2
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "截止时间（ISO 8601 格式）",
+            "example": "2026-03-05T18:00:00Z"
+          },
+          "status": {
+            "type": "string",
+            "description": "状态",
+            "enum": ["pending", "in_progress", "completed"],
+            "example": "in_progress"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "任务描述",
+            "example": "更新：已联系设备厂商，等待配件到货后处理"
+          },
+          "execute_immediately": {
+            "type": "boolean",
+            "description": "是否立即执行（为 true 时将状态改为 completed 并设置 completed_at）",
+            "default": false,
+            "example": false
           }
         }
       }

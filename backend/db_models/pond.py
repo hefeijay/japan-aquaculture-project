@@ -83,3 +83,4 @@ class Pond(Base):
     camera_health: Mapped[List["CameraHealth"]] = relationship(back_populates="pond", init=False)
     shrimp_stats: Mapped[List["ShrimpStats"]] = relationship(back_populates="pond", init=False)
     operation_logs: Mapped[List["OperationLog"]] = relationship(back_populates="pond", init=False)
+    work_tasks: Mapped[List["WorkTask"]] = relationship(back_populates="pond", init=False)

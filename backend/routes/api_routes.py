@@ -1953,6 +1953,49 @@ def test_device_connection():
         }), 500
 
 
+@api_bp.route('/users/active', methods=['GET'])
+@token_required
+def get_active_users():
+    """
+    获取活跃用户列表（轻量接口）
+    返回所有 status='active' 的用户，用于任务创建/编辑时选择负责人
+
+    Returns:
+        JSON格式的用户列表，包含 id、user_id、username
+    """
+    try:
+        with db_session_factory() as session:
+            users = (
+                session.query(User)
+                .filter(User.status == 'active')
+                .order_by(User.id)
+                .all()
+            )
+
+            data = [
+                {
+                    "id": u.id,
+                    "user_id": u.user_id,
+                    "username": u.username,
+                }
+                for u in users
+            ]
+
+        return jsonify({
+            "code": 200,
+            "message": "success",
+            "data": data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"获取活跃用户列表失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "message": f"服务器内部错误: {str(e)}",
+            "data": []
+        }), 500
+
+
 @api_bp.route('/device/test-connection/supported', methods=['GET'])
 @token_required
 def get_supported_connection_test_categories():

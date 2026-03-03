@@ -26,6 +26,7 @@ from .model import Model
 from .knowledge_base import KnowledgeBase, KnowledgeDocument
 from .alert_rule import AlertRule
 from .alert_notification import AlertNotification
+from .work_task import WorkTask
 
 __all__ = [
     "Base",
@@ -61,4 +62,5 @@ __all__ = [
     "KnowledgeDocument",
     "AlertRule",
     "AlertNotification",
+    "WorkTask",
 ]
