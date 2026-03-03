@@ -255,6 +255,3 @@ class Config:
     HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv('HEARTBEAT_TIMEOUT_SECONDS', '300'))
     HEARTBEAT_CHECK_INTERVAL_SECONDS = int(os.getenv('HEARTBEAT_CHECK_INTERVAL_SECONDS', '30'))
     HEARTBEAT_ALERT_COOLDOWN_SECONDS = int(os.getenv('HEARTBEAT_ALERT_COOLDOWN_SECONDS', '3600'))
-    DINGTALK_ALERT_AT_MOBILES = [
-        m.strip() for m in os.getenv('DINGTALK_ALERT_AT_MOBILES', '').split(',') if m.strip()
-    ]

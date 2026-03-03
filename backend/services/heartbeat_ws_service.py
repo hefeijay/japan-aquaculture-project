@@ -28,13 +28,11 @@ class HeartbeatWSService:
         timeout_seconds: int = 300,
         check_interval_seconds: int = 30,
         alert_cooldown_seconds: int = 3600,
-        alert_at_mobiles: list = None,
     ):
         self.ws_port = ws_port
         self.timeout_seconds = timeout_seconds
         self.check_interval = check_interval_seconds
         self.alert_cooldown = alert_cooldown_seconds
-        self.alert_at_mobiles = alert_at_mobiles or []
 
         # 心跳状态（受 _lock 保护）
         self.last_heartbeat: float | None = None
@@ -175,7 +173,7 @@ class HeartbeatWSService:
         )
 
         logger.warning("心跳超时，发送钉钉报警: elapsed=%.0fs", elapsed_seconds)
-        send_dingtalk_message(msg, at_mobiles=self.alert_at_mobiles)
+        send_dingtalk_message(msg, is_at_all=True)
 
     def _send_recovery_notification(self, old_last_heartbeat: float | None):
         """发送连接恢复通知，old_last_heartbeat 为断线前最后一次心跳时间戳"""
@@ -198,7 +196,7 @@ class HeartbeatWSService:
         )
 
         logger.info("客户端重连，发送恢复通知")
-        send_dingtalk_message(msg, at_mobiles=self.alert_at_mobiles)
+        send_dingtalk_message(msg, is_at_all=True)
 
     # ------------------------------------------------------------------
     # 启动 / 停止

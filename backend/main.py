@@ -43,7 +43,6 @@ def main():
                 timeout_seconds=Config.HEARTBEAT_TIMEOUT_SECONDS,
                 check_interval_seconds=Config.HEARTBEAT_CHECK_INTERVAL_SECONDS,
                 alert_cooldown_seconds=Config.HEARTBEAT_ALERT_COOLDOWN_SECONDS,
-                alert_at_mobiles=Config.DINGTALK_ALERT_AT_MOBILES,
             )
             heartbeat_service.start()
         except Exception as e:
