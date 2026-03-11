@@ -54,6 +54,10 @@
     {
       "name": "任务管理中心",
       "description": "业务任务的创建、编辑、撤销和查询管理"
+    },
+    {
+      "name": "养殖池实时监控",
+      "description": "养殖池的传感器数据、摄像头画面、设备状态、AI决策等实时监控接口。支持通过 stream=true 查询参数开启 SSE（Server-Sent Events）实时推送"
     }
   ],
   "paths": {
@@ -3179,6 +3183,646 @@
           }
         }
       }
+    },
+    "/v1/ponds/{pond_id}/sensors/realtime": {
+      "get": {
+        "tags": ["养殖池实时监控"],
+        "summary": "获取养殖池传感器实时数据",
+        "description": "获取指定养殖池下所有传感器设备的最新读数，包含传感器名称、当前值、单位及正常范围。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE（Server-Sent Events）流：\n- 连接建立时推送一次完整数据\n- 之后有新传感器读数写入时增量推送\n- Content-Type: text/event-stream\n\n**status 字段说明**（后端根据 value 与 valid_min/valid_max 比较自动计算）：\n- `normal`：值在 [valid_min, valid_max] 范围内\n- `abnormal_low`：值低于 valid_min\n- `abnormal_high`：值高于 valid_max",
+        "operationId": "getPondSensorsRealtime",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "path",
+            "description": "养殖池主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream）",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取传感器实时数据。stream=false 时返回 application/json；stream=true 时返回 text/event-stream（SSE流中每个事件的 data 字段格式与 JSON 响应的 data 字段相同）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondSensorsRealtimeData"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "pond_id": 1,
+                    "pond_name": "1号养殖池",
+                    "sensors": [
+                      {
+                        "device_id": 1,
+                        "name": "一号池溶解氧传感器",
+                        "metric": "do",
+                        "value": 7.5,
+                        "unit": "mg/L",
+                        "valid_min": 3.0,
+                        "valid_max": 15.0,
+                        "status": "normal",
+                        "recorded_at": "2026-03-06T10:30:00Z",
+                        "recorded_at_local": "2026-03-06T19:30:00+09:00"
+                      },
+                      {
+                        "device_id": 2,
+                        "name": "一号池pH传感器",
+                        "metric": "ph",
+                        "value": 6.2,
+                        "unit": "pH",
+                        "valid_min": 6.5,
+                        "valid_max": 9.0,
+                        "status": "abnormal_low",
+                        "recorded_at": "2026-03-06T10:30:00Z",
+                        "recorded_at_local": "2026-03-06T19:30:00+09:00"
+                      }
+                    ]
+                  }
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE事件流。每个事件格式：data: {JSON}\\n\\n。JSON 格式与 application/json 响应的 data 字段相同（PondSensorsRealtimeData）"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/ponds/{pond_id}/cameras/realtime": {
+      "get": {
+        "tags": ["养殖池实时监控"],
+        "summary": "获取养殖池摄像头实时数据",
+        "description": "获取指定养殖池下所有摄像头设备的最新状态和拍摄时间元数据。摄像头图片为二进制数据，需通过 `/v1/ponds/{pond_id}/cameras/{device_id}/image` 单独获取。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE 流。当有新图片拍摄时推送该摄像头的元数据更新（device_id、captured_at 等），前端收到后重新请求对应摄像头的 image 接口获取最新图片二进制数据。",
+        "operationId": "getPondCamerasRealtime",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "path",
+            "description": "养殖池主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "是否开启SSE实时推送（默认false返回JSON，true时当有新图片拍摄时推送摄像头元数据更新）",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取摄像头实时数据。stream=false 时返回 JSON；stream=true 时返回 SSE 流（推送元数据通知，不含图片二进制）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondCamerasRealtimeData"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "pond_id": 1,
+                    "pond_name": "1号养殖池",
+                    "cameras": [
+                      {
+                        "device_id": 10,
+                        "name": "一号池水面摄像头",
+                        "location": "一号池上方",
+                        "status": "online",
+                        "captured_at": "2026-03-06T10:28:00Z",
+                        "captured_at_local": "2026-03-06T19:28:00+09:00"
+                      },
+                      {
+                        "device_id": 11,
+                        "name": "一号池投料区摄像头",
+                        "location": "一号池投料口",
+                        "status": "offline",
+                        "captured_at": null,
+                        "captured_at_local": null
+                      }
+                    ]
+                  }
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE事件流。当有新图片时推送更新的摄像头元数据，前端收到后调用 /v1/ponds/{pond_id}/cameras/{device_id}/image 获取最新图片二进制数据"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/ponds/{pond_id}/cameras/{device_id}/image": {
+      "get": {
+        "tags": ["养殖池实时监控"],
+        "summary": "获取摄像头最新图片（二进制）",
+        "description": "获取指定养殖池下指定摄像头的最新拍摄图片，直接返回二进制图片数据。\n\n**前端使用方式**：\n- 直接用 `<img src=\"/api/v1/ponds/1/cameras/10/image\">` 渲染\n- 刷新时建议加时间戳参数避免浏览器缓存：`?t=1709723400000`\n\n**配合 SSE 使用**：前端通过 `/v1/ponds/{pond_id}/cameras/realtime?stream=true` 监听新图片通知，收到通知后重新请求本接口获取最新图片。",
+        "operationId": "getPondCameraImage",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "path",
+            "description": "养殖池主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "摄像头设备主键ID（devices.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 10
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "description": "时间戳参数（用于绕过浏览器缓存，值可为任意数字）",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回摄像头最新图片的二进制数据",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "摄像头不存在、不属于该养殖池、或暂无图片数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "该摄像头暂无图片数据"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/ponds/{pond_id}/devices": {
+      "get": {
+        "tags": ["养殖池实时监控"],
+        "summary": "获取养殖池设备列表",
+        "description": "获取指定养殖池下所有设备，包括传感器、喂食机、摄像头、循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵等。支持按设备类别筛选。\n\n**can_control 字段说明**（后端自动计算，前端据此决定是否显示开关按钮）：\n- `true`：设备在线（status=online）且 control_mode 为 manual_only 或 hybrid 且 传感器类设备\n- `false`：其他情况（设备离线 / control_mode 为 ai_only / 非传感器类设备如喂食机、摄像头等）",
+        "operationId": "getPondDevices",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "path",
+            "description": "养殖池主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "按设备类别筛选（可选，不传则返回该养殖池下所有设备）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取设备列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondDeviceListData"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "pond_id": 1,
+                    "pond_name": "1号养殖池",
+                    "devices": [
+                      {
+                        "device_id": 1,
+                        "name": "一号池溶解氧传感器",
+                        "category": "sensor",
+                        "category_name": "传感器",
+                        "status": "online",
+                        "is_running": false,
+                        "control_mode": "hybrid",
+                        "can_control": true,
+                        "location": "一号池中央区域"
+                      },
+                      {
+                        "device_id": 5,
+                        "name": "一号池自动喂食机",
+                        "category": "feeder",
+                        "category_name": "喂食机",
+                        "status": "online",
+                        "is_running": true,
+                        "control_mode": "hybrid",
+                        "can_control": false,
+                        "location": "一号池边缘"
+                      },
+                      {
+                        "device_id": 10,
+                        "name": "一号池水面摄像头",
+                        "category": "camera",
+                        "category_name": "摄像头",
+                        "status": "online",
+                        "is_running": true,
+                        "control_mode": "manual_only",
+                        "can_control": false,
+                        "location": "一号池上方"
+                      },
+                      {
+                        "device_id": 6,
+                        "name": "一号池循环水泵",
+                        "category": "water_pump",
+                        "category_name": "循环水泵",
+                        "status": "online",
+                        "is_running": false,
+                        "control_mode": "manual_only",
+                        "can_control": false,
+                        "location": "一号池进水口"
+                      },
+                      {
+                        "device_id": 7,
+                        "name": "一号池鼓风机",
+                        "category": "air_blower",
+                        "category_name": "鼓风机",
+                        "status": "offline",
+                        "is_running": false,
+                        "control_mode": "ai_only",
+                        "can_control": false,
+                        "location": "一号池旁"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/devices/{device_id}/control": {
+      "post": {
+        "tags": ["设备管理"],
+        "summary": "设备开关控制",
+        "description": "发送开/关控制指令给指定设备。\n\n**前置校验**：\n- 设备必须存在且未删除\n- 设备必须在线（status=online）\n- 设备类型不能是传感器（sensor）或摄像头（camera）\n- 设备 control_mode 不能是 ai_only（仅AI控制模式不支持手动操作）\n\n**action 取值**：\n- `start`：启动设备\n- `stop`：停止设备",
+        "operationId": "controlDevice",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "设备主键ID（devices.id）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 5
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "控制指令",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceControlRequest"
+              },
+              "example": {
+                "action": "start"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "控制指令发送成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "控制指令已发送"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceControlResponse"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "控制指令已发送",
+                  "data": {
+                    "device_id": 5,
+                    "name": "一号池自动喂食机",
+                    "action": "start",
+                    "is_running": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "控制指令被拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                },
+                "examples": {
+                  "offline": {
+                    "summary": "设备离线",
+                    "value": {
+                      "code": 400,
+                      "message": "设备当前离线，无法控制",
+                      "data": null
+                    }
+                  },
+                  "aiOnly": {
+                    "summary": "仅AI控制",
+                    "value": {
+                      "code": 400,
+                      "message": "该设备为仅AI控制模式，不支持手动操作",
+                      "data": null
+                    }
+                  },
+                  "unsupported": {
+                    "summary": "不支持控制的设备类型",
+                    "value": {
+                      "code": 400,
+                      "message": "该设备类型不支持开关控制",
+                      "data": null
+                    }
+                  },
+                  "invalidAction": {
+                    "summary": "无效的action",
+                    "value": {
+                      "code": 400,
+                      "message": "action 只允许 start 或 stop",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/ponds/{pond_id}/ai-decisions/realtime": {
+      "get": {
+        "tags": ["养殖池实时监控"],
+        "summary": "获取养殖池AI决策实时数据",
+        "description": "获取与指定养殖池相关的活跃AI决策列表，按优先级降序和创建时间降序排列。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE 流：\n- 连接建立时推送完整的活跃决策列表\n- 之后有新决策创建或决策状态变更时推送更新\n\n**过滤条件**：status=active，并通过 pond_id 关联该养殖池；后端按此条件返回对应数据。\n\n**type 枚举**：\n- `analysis`：数据分析\n- `warning`：预警提示\n- `action`：行动建议\n- `optimization`：优化建议",
+        "operationId": "getPondAIDecisionsRealtime",
+        "parameters": [
+          {
+            "name": "pond_id",
+            "in": "path",
+            "description": "养殖池主键ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream）",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取AI决策实时数据。stream=false 时返回 JSON；stream=true 时返回 SSE 流",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PondAIDecisionsRealtimeData"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "message": "success",
+                  "data": {
+                    "pond_id": 1,
+                    "pond_name": "1号养殖池",
+                    "decisions": [
+                      {
+                        "id": 1,
+                        "decision_id": "DEC-20260306-001",
+                        "type": "warning",
+                        "message": "溶解氧含量持续偏低（当前6.2mg/L），建议增加增氧机运行时间",
+                        "action": "建议启动鼓风机，增大曝气量",
+                        "priority": 8,
+                        "confidence": 92.50,
+                        "status": "active",
+                        "created_at": "2026-03-06T10:30:00Z",
+                        "created_at_local": "2026-03-06T19:30:00+09:00",
+                        "expires_at": "2026-03-06T12:30:00Z"
+                      },
+                      {
+                        "id": 2,
+                        "decision_id": "DEC-20260306-002",
+                        "type": "optimization",
+                        "message": "当前水温稳定在25°C，建议减少喂食频率以优化饲料转化率",
+                        "action": "将喂食频率从每日4次调整为3次",
+                        "priority": 5,
+                        "confidence": 85.00,
+                        "status": "active",
+                        "created_at": "2026-03-06T09:00:00Z",
+                        "created_at_local": "2026-03-06T18:00:00+09:00",
+                        "expires_at": "2026-03-07T09:00:00Z"
+                      }
+                    ]
+                  }
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE事件流。每个事件的 data 字段为 JSON 格式的 PondAIDecisionsRealtimeData"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4692,6 +5336,373 @@
             "description": "是否立即执行（为 true 时将状态改为 completed 并设置 completed_at）",
             "default": false,
             "example": false
+          }
+        }
+      },
+      "PondSensorsRealtimeData": {
+        "type": "object",
+        "description": "养殖池传感器实时数据（作为响应的 data 字段返回，也作为 SSE 事件的 data 内容）",
+        "properties": {
+          "pond_id": {
+            "type": "integer",
+            "description": "养殖池主键ID",
+            "example": 1
+          },
+          "pond_name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "sensors": {
+            "type": "array",
+            "description": "传感器数据列表（每个传感器设备的最新一条读数）",
+            "items": {
+              "$ref": "#/components/schemas/PondSensorRealtimeItem"
+            }
+          }
+        }
+      },
+      "PondSensorRealtimeItem": {
+        "type": "object",
+        "description": "单个传感器的实时数据",
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "传感器设备主键ID（devices.id）",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "传感器设备名称",
+            "example": "一号池溶解氧传感器"
+          },
+          "metric": {
+            "type": "string",
+            "description": "测量指标标识符（对应 sensor_types.metric）",
+            "example": "do"
+          },
+          "value": {
+            "type": "number",
+            "nullable": true,
+            "description": "当前读数值（无数据时为null）",
+            "example": 7.5
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位",
+            "example": "mg/L"
+          },
+          "valid_min": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "正常范围下限（来自 sensor_types.valid_min）",
+            "example": 3.0
+          },
+          "valid_max": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "正常范围上限（来自 sensor_types.valid_max）",
+            "example": 15.0
+          },
+          "status": {
+            "type": "string",
+            "description": "数值状态（后端根据 value 与 valid_min/valid_max 比较自动计算）",
+            "enum": ["normal", "abnormal_low", "abnormal_high"],
+            "example": "normal"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "读数记录时间（UTC，无数据时为null）",
+            "example": "2026-03-06T10:30:00Z"
+          },
+          "recorded_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "读数记录时间（本地时间，默认UTC+9，无数据时为null）",
+            "example": "2026-03-06T19:30:00+09:00"
+          }
+        }
+      },
+      "PondCamerasRealtimeData": {
+        "type": "object",
+        "description": "养殖池摄像头实时元数据（图片二进制通过单独的 image 接口获取）",
+        "properties": {
+          "pond_id": {
+            "type": "integer",
+            "description": "养殖池主键ID",
+            "example": 1
+          },
+          "pond_name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "cameras": {
+            "type": "array",
+            "description": "摄像头元数据列表",
+            "items": {
+              "$ref": "#/components/schemas/PondCameraRealtimeItem"
+            }
+          }
+        }
+      },
+      "PondCameraRealtimeItem": {
+        "type": "object",
+        "description": "单个摄像头的实时元数据（不含图片二进制）",
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "摄像头设备主键ID（devices.id），用于调用 image 接口获取图片",
+            "example": 10
+          },
+          "name": {
+            "type": "string",
+            "description": "摄像头设备名称",
+            "example": "一号池水面摄像头"
+          },
+          "location": {
+            "type": "string",
+            "description": "摄像头安装位置",
+            "example": "一号池上方"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": ["online", "offline"],
+            "example": "online"
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "最新图片拍摄时间（UTC，离线或无图片时为null）",
+            "example": "2026-03-06T10:28:00Z"
+          },
+          "captured_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "最新图片拍摄时间（本地时间，默认UTC+9，离线或无图片时为null）",
+            "example": "2026-03-06T19:28:00+09:00"
+          }
+        }
+      },
+      "PondDeviceListData": {
+        "type": "object",
+        "description": "养殖池设备列表数据（包含该养殖池下所有设备，含传感器）",
+        "properties": {
+          "pond_id": {
+            "type": "integer",
+            "description": "养殖池主键ID",
+            "example": 1
+          },
+          "pond_name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "devices": {
+            "type": "array",
+            "description": "设备列表（含传感器、喂食机、摄像头等全部设备）",
+            "items": {
+              "$ref": "#/components/schemas/PondDeviceItem"
+            }
+          }
+        }
+      },
+      "PondDeviceItem": {
+        "type": "object",
+        "description": "养殖池中的单个设备信息（含传感器及喂食机、摄像头等）",
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "设备主键ID（devices.id）",
+            "example": 5
+          },
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "一号池自动喂食机"
+          },
+          "category": {
+            "type": "string",
+            "description": "设备类别",
+            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"],
+            "example": "feeder"
+          },
+          "category_name": {
+            "type": "string",
+            "description": "设备类别中文名称",
+            "example": "喂食机"
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": ["online", "offline"],
+            "example": "online"
+          },
+          "is_running": {
+            "type": "boolean",
+            "description": "设备是否正在运行",
+            "example": true
+          },
+          "control_mode": {
+            "type": "string",
+            "description": "控制模式",
+            "enum": ["manual_only", "ai_only", "hybrid"],
+            "example": "hybrid"
+          },
+          "can_control": {
+            "type": "boolean",
+            "description": "是否可手动控制（后端计算：设备在线 + control_mode 为 manual_only 或 hybrid + 传感器类设备）",
+            "example": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "description": "设备安装位置",
+            "example": "一号池边缘"
+          }
+        }
+      },
+      "DeviceControlRequest": {
+        "type": "object",
+        "description": "设备控制请求体",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "控制动作（start=启动，stop=停止）",
+            "enum": ["start", "stop"],
+            "example": "start"
+          }
+        }
+      },
+      "DeviceControlResponse": {
+        "type": "object",
+        "description": "设备控制响应数据",
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "description": "设备主键ID",
+            "example": 5
+          },
+          "name": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "一号池自动喂食机"
+          },
+          "action": {
+            "type": "string",
+            "description": "执行的控制动作",
+            "enum": ["start", "stop"],
+            "example": "start"
+          },
+          "is_running": {
+            "type": "boolean",
+            "description": "控制后的运行状态",
+            "example": true
+          }
+        }
+      },
+      "PondAIDecisionsRealtimeData": {
+        "type": "object",
+        "description": "养殖池AI决策实时数据（作为响应的 data 字段返回，也作为 SSE 事件的 data 内容）",
+        "properties": {
+          "pond_id": {
+            "type": "integer",
+            "description": "养殖池主键ID",
+            "example": 1
+          },
+          "pond_name": {
+            "type": "string",
+            "description": "养殖池名称",
+            "example": "1号养殖池"
+          },
+          "decisions": {
+            "type": "array",
+            "description": "AI决策列表（按 priority 降序、created_at 降序排列）",
+            "items": {
+              "$ref": "#/components/schemas/PondAIDecisionItem"
+            }
+          }
+        }
+      },
+      "PondAIDecisionItem": {
+        "type": "object",
+        "description": "单条AI决策信息",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "决策主键ID",
+            "example": 1
+          },
+          "decision_id": {
+            "type": "string",
+            "description": "决策业务ID",
+            "example": "DEC-20260306-001"
+          },
+          "type": {
+            "type": "string",
+            "description": "决策类型",
+            "enum": ["analysis", "warning", "action", "optimization"],
+            "example": "warning"
+          },
+          "message": {
+            "type": "string",
+            "description": "决策内容描述",
+            "example": "溶解氧含量持续偏低（当前6.2mg/L），建议增加增氧机运行时间"
+          },
+          "action": {
+            "type": "string",
+            "nullable": true,
+            "description": "建议的行动措施",
+            "example": "建议启动鼓风机，增大曝气量"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "优先级（0-10，越高越紧急）",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 8
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float",
+            "description": "置信度（0-100）",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 92.50
+          },
+          "status": {
+            "type": "string",
+            "description": "决策状态",
+            "enum": ["active", "processed", "expired"],
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间（UTC）",
+            "example": "2026-03-06T10:30:00Z"
+          },
+          "created_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间（本地时间，默认UTC+9）",
+            "example": "2026-03-06T19:30:00+09:00"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "过期时间（UTC，为null表示不过期）",
+            "example": "2026-03-06T12:30:00Z"
           }
         }
       }

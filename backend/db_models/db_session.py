@@ -26,6 +26,7 @@ def get_engine():
         db_url = Config.SQLALCHEMY_DATABASE_URI
         _engine = create_engine(
             db_url,
+            isolation_level="READ COMMITTED",
             pool_size=15,
             max_overflow=20,
             pool_timeout=30,
@@ -80,5 +81,6 @@ def db_session_factory():
         session.rollback()
         raise
     finally:
+        session.rollback()
         session.close()
         logger.debug("数据库会话已关闭。")

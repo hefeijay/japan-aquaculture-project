@@ -228,6 +228,10 @@ class Config:
     # 传感器实时数据配置（可通过环境变量覆盖）
     SENSOR_REALTIME_LIMIT = int(os.getenv('SENSOR_REALTIME_LIMIT', '24'))  # 每个 metric 获取的最新记录数，默认24条
     
+    # ==================== SSE 实时推送配置 ====================
+    # SSE 轮询间隔（秒），默认5秒
+    SSE_POLL_INTERVAL = int(os.getenv('SSE_POLL_INTERVAL', '5'))
+    
     # ==================== 时区配置 ====================
     # 本地时区偏移量（小时），默认为日本时区 UTC+9
     # 可通过环境变量 LOCAL_TIMEZONE_OFFSET 覆盖
