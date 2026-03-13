@@ -407,9 +407,18 @@ class PondRealtimeService:
 
     @classmethod
     def control_device(
-        cls, device_id: int, action: str
+        cls, device_id: int, action: str,
+        relay: int = -1, duration: int = 0
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str], int]:
         """
+        通过 MQTT 向物理设备下发控制指令，同时更新数据库状态。
+
+        Args:
+            device_id: 数据库中的设备主键 ID
+            action: 控制动作 (start/stop)
+            relay: 继电器索引，-1 表示全部
+            duration: 持续时间（秒），0 表示持续开/关
+
         Returns:
             (data, error_message, http_status_code)
         """
@@ -441,20 +450,36 @@ class PondRealtimeService:
                     return None, "该设备为仅AI控制模式，不支持手动操作", 400
 
                 config = device.device_specific_config or {}
-                is_running = action == "start"
-                config["is_running"] = is_running
+                mac = config.get("MAC")
+                if not mac:
+                    return None, "该设备未配置 MAC 地址，无法下发控制指令", 400
+
+                from services.mqtt_service import MQTTService
+
+                request_id = MQTTService.publish_control(
+                    mac, action, relay, duration
+                )
+                if request_id is None:
+                    return None, "MQTT 服务未连接，无法下发指令", 503
+
+                config["is_running"] = (action == "start")
+                config["last_command"] = action
+                config["last_request_id"] = request_id
                 device.device_specific_config = config
 
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(device, "device_specific_config")
-
                 session.commit()
 
                 data = {
                     "device_id": device.id,
+                    "mac": mac,
                     "name": device.name,
                     "action": action,
-                    "is_running": is_running,
+                    "relay": relay,
+                    "duration": duration,
+                    "is_running": config["is_running"],
+                    "request_id": request_id,
                 }
                 return data, None, 200
 

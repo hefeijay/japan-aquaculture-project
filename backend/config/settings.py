@@ -259,3 +259,9 @@ class Config:
     HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv('HEARTBEAT_TIMEOUT_SECONDS', '300'))
     HEARTBEAT_CHECK_INTERVAL_SECONDS = int(os.getenv('HEARTBEAT_CHECK_INTERVAL_SECONDS', '30'))
     HEARTBEAT_ALERT_COOLDOWN_SECONDS = int(os.getenv('HEARTBEAT_ALERT_COOLDOWN_SECONDS', '3600'))
+
+    # ==================== MQTT 设备控制配置 ====================
+    MQTT_BROKER_HOST = os.getenv('MQTT_BROKER_HOST', '')
+    MQTT_BROKER_PORT = int(os.getenv('MQTT_BROKER_PORT', '1883'))
+    MQTT_USER = os.getenv('MQTT_USER', 'aqua_device')
+    MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', '')

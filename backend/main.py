@@ -48,6 +48,13 @@ def main():
         except Exception as e:
             logger.error(f"启动心跳监控服务失败: {e}")
 
+        # 启动 MQTT 设备控制服务（后台线程）
+        try:
+            from services.mqtt_service import MQTTService
+            MQTTService.init()
+        except Exception as e:
+            logger.error(f"启动 MQTT 服务失败: {e}")
+
     # 启动Flask服务器
     app.run(
         host=Config.HOST,

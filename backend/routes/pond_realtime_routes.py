@@ -227,8 +227,12 @@ def pond_ai_decisions_realtime(pond_id: int):
 @pond_realtime_bp.route("/devices/<int:device_id>/control", methods=["POST"])
 def device_control(device_id: int):
     """
-    发送开/关控制指令给指定设备。
-    请求体: {"action": "start" | "stop"}
+    通过 MQTT 发送控制指令给指定设备。
+    请求体: {
+        "action": "start" | "stop",    (必填)
+        "relay": 0,                     (可选，继电器索引，-1=全部，默认-1)
+        "duration": 5                   (可选，持续秒数，0=持续开/关，默认0)
+    }
     """
     body = request.get_json(silent=True)
     if not body or "action" not in body:
@@ -238,8 +242,13 @@ def device_control(device_id: int):
             "data": None,
         }), 400
 
-    action = body["action"]
-    data, err, status_code = PondRealtimeService.control_device(device_id, action)
+    action   = body["action"]
+    relay    = body.get("relay", -1)
+    duration = body.get("duration", 0)
+
+    data, err, status_code = PondRealtimeService.control_device(
+        device_id, action, relay=relay, duration=duration
+    )
     if err:
         return jsonify({"code": status_code, "message": err, "data": None}), status_code
     return jsonify({"code": 200, "message": "控制指令已发送", "data": data})
