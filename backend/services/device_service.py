@@ -38,6 +38,8 @@ DEVICE_TYPE_MAP = {
     "air_blower": "aerator",
     "water_switch": "switch",
     "solar_heater_pump": "heater",
+    "air_pump": "air_pump",
+    "physical_filter": "filter",
     "aerator": "aerator",
     "pump": "pump",
     "filter": "filter",
@@ -294,6 +296,12 @@ class DeviceConnectionTester:
     # 支持的设备类别 -> 测试方法映射
     TESTER_MAP = {
         'feeder': '_test_feeder_connection',
+        'water_pump': '_test_mac_device_connection',
+        'air_blower': '_test_mac_device_connection',
+        'water_switch': '_test_mac_device_connection',
+        'solar_heater_pump': '_test_mac_device_connection',
+        'air_pump': '_test_mac_device_connection',
+        'physical_filter': '_test_mac_device_connection',
         # 后续扩展：
         # 'camera': '_test_camera_connection',
         # 'sensor': '_test_sensor_connection',
@@ -457,6 +465,124 @@ class DeviceConnectionTester:
                 "details": {
                     "error": str(e)
                 }
+            }
+    
+    @classmethod
+    def _test_mac_device_connection(cls, connection_info: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+        """
+        MAC类设备连接测试（循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵、气泵、物理过滤器）
+        通过 MQTT 发送 status 指令，等待设备回复来验证连通性。
+        
+        connection_info 必需字段：
+            - mac_address: 设备MAC地址（去冒号小写，如 1020bab3b8bc）
+        """
+        import json as json_mod
+        
+        mac_address = connection_info.get('mac_address')
+        if not mac_address:
+            return {
+                "success": False,
+                "message": "❌ 缺少必需字段: mac_address",
+                "details": {
+                    "error": "connection_info 格式错误",
+                    "required_fields": ["mac_address"],
+                    "missing_fields": ["mac_address"]
+                }
+            }
+        
+        mac_address = mac_address.replace(":", "").replace("-", "").lower()
+        
+        try:
+            import paho.mqtt.client as mqtt
+            from config.settings import Config
+            
+            broker = Config.MQTT_BROKER_HOST
+            port = Config.MQTT_BROKER_PORT
+            user = Config.MQTT_USER
+            pwd = Config.MQTT_PASSWORD
+            
+            if not broker:
+                return {
+                    "success": False,
+                    "message": "❌ MQTT Broker 未配置",
+                    "details": {"error": "后端未配置 MQTT_BROKER_HOST"}
+                }
+            
+            topic_control = f"aqua/devices/{mac_address}/control"
+            topic_response = f"aqua/devices/{mac_address}/response"
+            topic_status = f"aqua/devices/{mac_address}/status"
+            
+            received = {}
+            
+            def on_message(client, userdata, msg):
+                try:
+                    received['payload'] = json_mod.loads(msg.payload.decode())
+                    received['topic'] = msg.topic
+                except Exception:
+                    pass
+            
+            client = mqtt.Client(client_id=f"conn-test-{mac_address[:8]}", protocol=mqtt.MQTTv311)
+            client.username_pw_set(user, pwd)
+            client.on_message = on_message
+            
+            client.connect(broker, port, keepalive=30)
+            client.subscribe(topic_response)
+            client.subscribe(topic_status)
+            client.loop_start()
+            
+            import time as time_mod
+            time_mod.sleep(0.5)
+            
+            import uuid
+            request_id = uuid.uuid4().hex[:8]
+            payload = json_mod.dumps({"action": "status", "request_id": request_id})
+            client.publish(topic_control, payload, qos=1)
+            
+            wait_ms = min(timeout, 10) * 10
+            for _ in range(wait_ms):
+                if received:
+                    break
+                time_mod.sleep(0.1)
+            
+            client.loop_stop()
+            client.disconnect()
+            
+            if received:
+                resp = received.get('payload', {})
+                logger.info(f"MAC设备连接测试成功: {mac_address}")
+                return {
+                    "success": True,
+                    "message": "✅ 连接测试成功，设备在线且响应正常",
+                    "details": {
+                        "mac_address": mac_address,
+                        "relay_states": resp.get("relay_states"),
+                        "response": resp
+                    }
+                }
+            else:
+                logger.warning(f"MAC设备连接测试超时: {mac_address}")
+                return {
+                    "success": False,
+                    "message": "❌ 设备未响应",
+                    "details": {
+                        "error": "在超时时间内未收到设备回复，设备可能离线或MAC地址不匹配",
+                        "mac_address": mac_address,
+                        "timeout": timeout
+                    }
+                }
+                
+        except ImportError:
+            return {
+                "success": False,
+                "message": "❌ 缺少 paho-mqtt 依赖",
+                "details": {"error": "请安装: pip install paho-mqtt"}
+            }
+        except Exception as e:
+            logger.error(f"MAC设备连接测试异常: {mac_address}, error={str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "message": "❌ 连接测试失败",
+                "details": {"error": str(e)}
             }
     
     # ==================== 后续扩展示例 ====================

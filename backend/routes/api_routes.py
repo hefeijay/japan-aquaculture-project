@@ -41,6 +41,21 @@ CAMERA_INDEX_MAPPING = {
     2: 7,  # camera_index 2 -> 映射到设备ID 10
 }
 
+def _normalize_connection_info(connection_info: dict) -> dict:
+    """
+    将前端传入的 connection_info 字段名统一为后端标准格式。
+    url -> base_url, username -> user_id，其余字段原样保留。
+    """
+    field_map = {
+        'url': 'base_url',
+        'username': 'user_id',
+    }
+    normalized = {}
+    for key, value in connection_info.items():
+        normalized[field_map.get(key, key)] = value
+    return normalized
+
+
 def generate_device_id(device_type_category: str, session) -> str:
     """
     生成设备ID：{category}_{数字}
@@ -61,7 +76,9 @@ def generate_device_id(device_type_category: str, session) -> str:
         'water_pump': 'water_pump',
         'air_blower': 'air_blower',
         'water_switch': 'water_switch',
-        'solar_heater_pump': 'solar_heater_pump'
+        'solar_heater_pump': 'solar_heater_pump',
+        'air_pump': 'air_pump',
+        'physical_filter': 'physical_filter',
     }
     
     prefix = category_prefix_map.get(device_type_category, 'device')
@@ -1555,27 +1572,34 @@ def create_device():
             connection_info = data.get('connection_info')
             if connection_info is None:
                 connection_info = {}
+            else:
+                connection_info = _normalize_connection_info(connection_info)
             
             device_specific_config = data.get('device_specific_config')
             if device_specific_config is None:
                 device_specific_config = {}
             
-            # 创建设备对象（所有设备都存储在devices表）
+            mac_categories = (
+                "water_pump", "air_blower", "water_switch",
+                "solar_heater_pump", "air_pump", "physical_filter",
+            )
+            default_status = "offline" if device_type.category in mac_categories else "online"
+
             device = Device(
                 device_id=device_id,
                 name=data['name'],
-                ownership=data.get('ownership'),  # 可选字段
+                ownership=data.get('ownership'),
                 device_type_id=data['device_type_id'],
-                sensor_type_id=sensor_type_id,  # 仅传感器设备有值，其他为None
-                pond_id=data['pond_id'],  # 必填字段
-                location=data['location'],  # 必填字段
+                sensor_type_id=sensor_type_id,
+                pond_id=data['pond_id'],
+                location=data['location'],
                 model=data.get('model'),
                 manufacturer=data.get('manufacturer'),
                 serial_number=data.get('serial_number'),
-                connection_info=connection_info,  # JSON字段，没有提供则为空JSON
-                status=data.get('status', 'online'),  # 默认online
-                control_mode=data['control_mode'],  # 必填字段
-                device_specific_config=device_specific_config,  # JSON字段，没有提供则为空JSON
+                connection_info=connection_info,
+                status=data.get('status', default_status),
+                control_mode=data['control_mode'],
+                device_specific_config=device_specific_config,
                 tags=data.get('tags'),
                 description=data.get('description'),
             )
@@ -1637,8 +1661,8 @@ def update_device(device_id):
             "location": "更新后的设备位置",
             "status": "online",
             "connection_info": {
-                "url": "http://192.168.1.100",
-                "username": "admin",
+                "base_url": "https://ffish.huaeran.cn:8081/commonRequest",
+                "user_id": "admin",
                 "password": "password"
             },
             "device_specific_config": {
@@ -1758,6 +1782,8 @@ def update_device(device_id):
                         "message": "connection_info 必须是JSON对象",
                         "data": None
                     }), 400
+                else:
+                    data['connection_info'] = _normalize_connection_info(data['connection_info'])
             
             if 'device_specific_config' in data:
                 if data['device_specific_config'] is None:

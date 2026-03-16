@@ -106,10 +106,13 @@ class PondRealtimeService:
                     cat = device_type.category
                     is_running = bool(config.get("is_running", False))
 
+                    mac_categories = (
+                        "water_pump", "air_blower", "water_switch",
+                        "solar_heater_pump", "air_pump", "physical_filter",
+                    )
                     can_control = (
-                        device.status == "online"
-                        and device.control_mode != "ai_only"
-                        and cat != "sensor"
+                        device.control_mode != "ai_only"
+                        and cat in mac_categories
                     )
 
                     devices.append(
@@ -407,17 +410,14 @@ class PondRealtimeService:
 
     @classmethod
     def control_device(
-        cls, device_id: int, action: str,
-        relay: int = -1, duration: int = 0
+        cls, device_id: int, action: str
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str], int]:
         """
-        通过 MQTT 向物理设备下发控制指令，同时更新数据库状态。
+        通过 MQTT 向物理设备下发开/关控制指令，同时更新数据库状态。
 
         Args:
             device_id: 数据库中的设备主键 ID
             action: 控制动作 (start/stop)
-            relay: 继电器索引，-1 表示全部
-            duration: 持续时间（秒），0 表示持续开/关
 
         Returns:
             (data, error_message, http_status_code)
@@ -440,32 +440,32 @@ class PondRealtimeService:
 
                 device, device_type = result
 
-                if device.status != "online":
-                    return None, "设备当前离线，无法控制", 400
-
-                if device_type.category == "sensor":
+                controllable_categories = (
+                    "water_pump", "air_blower", "water_switch",
+                    "solar_heater_pump", "air_pump", "physical_filter",
+                )
+                if device_type.category not in controllable_categories:
                     return None, "该设备类型不支持开关控制", 400
 
                 if device.control_mode == "ai_only":
                     return None, "该设备为仅AI控制模式，不支持手动操作", 400
 
-                config = device.device_specific_config or {}
-                mac = config.get("MAC")
+                conn_info = device.connection_info or {}
+                mac = conn_info.get("mac_address")
                 if not mac:
                     return None, "该设备未配置 MAC 地址，无法下发控制指令", 400
+                mac = mac.replace(":", "").replace("-", "").lower()
 
                 from services.mqtt_service import MQTTService
 
-                request_id = MQTTService.publish_control(
-                    mac, action, relay, duration
-                )
+                request_id = MQTTService.publish_control(mac, action)
                 if request_id is None:
                     return None, "MQTT 服务未连接，无法下发指令", 503
 
-                config["is_running"] = (action == "start")
-                config["last_command"] = action
-                config["last_request_id"] = request_id
-                device.device_specific_config = config
+                dsc = device.device_specific_config or {}
+                dsc["last_command"] = action
+                dsc["last_request_id"] = request_id
+                device.device_specific_config = dsc
 
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(device, "device_specific_config")
@@ -476,9 +476,7 @@ class PondRealtimeService:
                     "mac": mac,
                     "name": device.name,
                     "action": action,
-                    "relay": relay,
-                    "duration": duration,
-                    "is_running": config["is_running"],
+                    "status": device.status,
                     "request_id": request_id,
                 }
                 return data, None, 200

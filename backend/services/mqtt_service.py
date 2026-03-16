@@ -3,7 +3,7 @@
 """
 MQTT 设备控制服务模块
 负责与 MQTT Broker 通信，实现设备控制指令下发、设备状态接收与同步。
-ESP32 设备通过 MAC 地址标识，MAC 存储在 devices.device_specific_config["MAC"] 中。
+ESP32 设备通过 MAC 地址标识，MAC 存储在 devices.connection_info["mac_address"] 中。
 """
 
 import json
@@ -102,16 +102,16 @@ class MQTTService:
     @classmethod
     def _find_device_by_mac(cls, session, mac: str) -> Optional[Device]:
         """
-        在 devices 表中查找 device_specific_config->>'MAC' == mac 的设备。
-        MySQL JSON 查询: JSON_UNQUOTE(JSON_EXTRACT(device_specific_config, '$.MAC'))
+        在 devices 表中查找 connection_info->>'mac_address' == mac 的设备。
+        MySQL JSON 查询: JSON_UNQUOTE(JSON_EXTRACT(connection_info, '$.mac_address'))
         """
-        from sqlalchemy import func, text
+        from sqlalchemy import func
 
         device = (
             session.query(Device)
             .filter(
                 func.json_unquote(
-                    func.json_extract(Device.device_specific_config, "$.MAC")
+                    func.json_extract(Device.connection_info, "$.mac_address")
                 ) == mac,
                 Device.is_deleted == False,
             )
@@ -126,18 +126,23 @@ class MQTTService:
     @classmethod
     def _handle_online(cls, mac: str, payload: dict):
         online = payload.get("online", False)
-        new_status = "online" if online else "offline"
+        state = "connected" if online else "disconnected"
         try:
             with db_session_factory() as session:
                 device = cls._find_device_by_mac(session, mac)
                 if device:
-                    device.status = new_status
+                    config = device.device_specific_config or {}
+                    config["mqtt_connected"] = online
+                    device.device_specific_config = config
+
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(device, "device_specific_config")
                     session.commit()
-                    logger.info(f"设备 MAC={mac} ({device.name}) → {new_status}")
+                    logger.info(f"设备 MAC={mac} ({device.name}) MQTT {state}")
                 else:
                     logger.warning(f"收到未注册设备的上线消息: MAC={mac}")
         except Exception as e:
-            logger.error(f"更新设备在线状态失败: {e}", exc_info=True)
+            logger.error(f"更新设备MQTT连接状态失败: {e}", exc_info=True)
 
     # ----------------------------------------------------------------
     # 处理设备周期状态上报
@@ -152,13 +157,11 @@ class MQTTService:
                     return
 
                 config = device.device_specific_config or {}
-                config["relay_states"] = payload.get("relays", [])
                 config["ip"] = payload.get("ip", "")
                 config["rssi"] = payload.get("rssi", 0)
                 config["uptime_s"] = payload.get("uptime_s", 0)
-                config["relay_count"] = payload.get("relay_count", 0)
+                config["last_heartbeat"] = payload.get("uptime_s", 0)
                 device.device_specific_config = config
-                device.status = "online"
 
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(device, "device_specific_config")
@@ -175,7 +178,6 @@ class MQTTService:
         request_id = payload.get("request_id", "")
         success = payload.get("success", False)
         message = payload.get("message", "")
-        relay_states = payload.get("relay_states", [])
 
         logger.info(
             f"设备 MAC={mac} 回复: request_id={request_id}, "
@@ -188,13 +190,19 @@ class MQTTService:
                     device = cls._find_device_by_mac(session, mac)
                     if device:
                         config = device.device_specific_config or {}
-                        config["relay_states"] = relay_states
-                        config["is_running"] = any(relay_states)
+                        last_command = config.get("last_command", "")
+                        is_running = (last_command == "start")
+                        config["is_running"] = is_running
                         device.device_specific_config = config
+                        device.status = "online" if is_running else "offline"
 
                         from sqlalchemy.orm.attributes import flag_modified
                         flag_modified(device, "device_specific_config")
                         session.commit()
+                        logger.info(
+                            f"设备 MAC={mac} 控制确认: "
+                            f"is_running={is_running}, status={device.status}"
+                        )
             except Exception as e:
                 logger.error(f"更新控制结果失败: {e}", exc_info=True)
 
@@ -203,16 +211,13 @@ class MQTTService:
     # ----------------------------------------------------------------
 
     @classmethod
-    def publish_control(cls, mac: str, action: str,
-                        relay: int = -1, duration: int = 0) -> Optional[str]:
+    def publish_control(cls, mac: str, action: str) -> Optional[str]:
         """
         向指定 MAC 的设备发布控制指令。
 
         Args:
             mac: 设备 MAC 地址（去冒号小写，如 aabbccddeeff）
-            action: 控制动作 (start/stop/up/down/status)
-            relay: 继电器索引，-1 表示全部
-            duration: 持续时间（秒），0 表示持续开/关
+            action: 控制动作 (start/stop)
 
         Returns:
             request_id: 请求ID，用于追踪回复；None 表示发送失败
@@ -224,8 +229,6 @@ class MQTTService:
         request_id = uuid.uuid4().hex[:8]
         payload = {
             "action": action,
-            "relay": relay,
-            "duration": duration,
             "request_id": request_id,
         }
         topic = f"aqua/devices/{mac}/control"
