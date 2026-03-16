@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "日本陆上养殖项目 API",
-    "description": "日本陆上养殖项目完整接口文档\n\n包含设备管理、养殖池管理、传感器监控、数据采集等功能。\n\n## 统一设备表架构说明\n\n所有设备信息存储在统一的 `devices` 表中，通过 `device_type_id` 关联 `device_types` 表获取设备类别。\n\n- **传感器设备**：通过 `sensor_type_id` 关联 `sensor_types` 表获取传感器类型信息，返回在 `info` 字段\n- **其他设备**：特有配置存储在 `device_specific_config` 字段，直接返回\n\n## 设备类型特殊字段映射\n\n不同设备类型（category）在 `device_specific_config` 字段中需要填写的特殊字段如下：\n\n### 喂食机 (feeder)\n- `feed_count`: 默认喂食份数（来自云端API的feedCount，默认：1）\n- `timezone`: 时区（UTC+，对应云端API的devTimeZone，默认：9）\n- `network_type`: 网络类型（0=WiFi, 1=4G，对应云端API的netType，默认：0）\n- `group_id`: 设备分组ID（对应云端API的groupID）\n- `feed_portion_weight`: 每份饲料重量（克），用于计算总投喂量，默认：17.0\n- `capacity_kg`: 饲料容量（千克）\n- `feed_type`: 饲料类型\n\n### 传感器 (sensor)\n无需在 `device_specific_config` 中填写特殊字段，传感器类型信息通过 `sensor_type_id` 关联 `sensor_types` 表获取。\n\n### 摄像头 (camera)\n- `quality`: 画质(高/中/低)\n- `resolution`: 分辨率（如：1920x1080）\n- `notes`: 备注\n\n### 循环水泵 (water_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 鼓风机 (air_blower)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 水龙头开关 (water_switch)\n- `notes`: 备注\n\n### 太阳能加热器循环泵 (solar_heater_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n## 固定枚举值说明\n\n### 设备状态 (status)\n- `online`: 在线\n- `offline`: 离线\n\n### 控制模式 (control_mode)\n- `manual_only`: 仅人工\n- `ai_only`: 仅AI\n- `hybrid`: 人工/AI混合\n\n### 设备类别 (category)\n- `sensor`: 传感器\n- `feeder`: 喂食机\n- `camera`: 摄像头\n- `water_pump`: 循环水泵\n- `air_blower`: 鼓风机\n- `water_switch`: 水龙头开关\n- `solar_heater_pump`: 太阳能加热器循环泵\n\n### 喂食机状态 (feeder status)\n- `ok`: 正常\n- `warning`: 警告\n- `error`: 错误\n\n## 时间字段说明\n\n预警相关接口返回的时间字段分为 UTC 时间和本地时间两种：\n\n### 预警规则 (AlertRule)\n- `last_checked_at`: 上次检查时间（UTC）\n- `last_checked_at_local`: 上次检查时间（本地时间）\n\n### 预警通知 (AlertNotification)\n- `triggered_at`: 预警触发时间（UTC）\n- `triggered_at_local`: 预警触发时间（本地时间）\n- `resolved_at`: 解决时间（UTC）\n- `resolved_at_local`: 解决时间（本地时间）\n\n### 本地时区配置\n本地时间的时区由后端配置 `Config.LOCAL_TIMEZONE_OFFSET` 决定，默认为 UTC+9（日本标准时间）。可通过环境变量 `LOCAL_TIMEZONE_OFFSET` 修改。",
+    "description": "日本陆上养殖项目完整接口文档\n\n包含设备管理、养殖池管理、传感器监控、数据采集等功能。\n\n## 统一设备表架构说明\n\n所有设备信息存储在统一的 `devices` 表中，通过 `device_type_id` 关联 `device_types` 表获取设备类别。\n\n- **传感器设备**：通过 `sensor_type_id` 关联 `sensor_types` 表获取传感器类型信息，返回在 `info` 字段\n- **其他设备**：特有配置存储在 `device_specific_config` 字段，直接返回\n\n## 设备类型特殊字段映射\n\n不同设备类型（category）在 `device_specific_config` 字段中需要填写的特殊字段如下：\n\n### 喂食机 (feeder)\n- `feed_count`: 默认喂食份数（来自云端API的feedCount，默认：1）\n- `timezone`: 时区（UTC+，对应云端API的devTimeZone，默认：9）\n- `network_type`: 网络类型（0=WiFi, 1=4G，对应云端API的netType，默认：0）\n- `group_id`: 设备分组ID（对应云端API的groupID）\n- `feed_portion_weight`: 每份饲料重量（克），用于计算总投喂量，默认：17.0\n- `capacity_kg`: 饲料容量（千克）\n- `feed_type`: 饲料类型\n\n### 传感器 (sensor)\n无需在 `device_specific_config` 中填写特殊字段，传感器类型信息通过 `sensor_type_id` 关联 `sensor_types` 表获取。\n\n### 摄像头 (camera)\n- `quality`: 画质(高/中/低)\n- `resolution`: 分辨率（如：1920x1080）\n- `notes`: 备注\n\n### 循环水泵 (water_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 鼓风机 (air_blower)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 水龙头开关 (water_switch)\n- `notes`: 备注\n\n### 太阳能加热器循环泵 (solar_heater_pump)\n- `flow_rate`: 循环量\n- `power`: 功率\n- `notes`: 备注\n\n### 气泵 (air_pump)\n- `air_flow`: 气量\n- `power`: 功率\n- `notes`: 备注\n\n### 物理过滤器 (physical_filter)\n- `filter_type`: 过滤类型\n- `notes`: 备注\n\n## 设备连接信息 (connection_info) 说明\n\n不同设备类型的 `connection_info` 字段内容不同：\n\n### API类设备（喂食机、摄像头、传感器）\n- `url`: 连接地址\n- `username`: 账户名\n- `password`: 密码\n\n### MAC类设备（循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵、气泵、物理过滤器）\n- `mac_address`: 设备MAC地址（去冒号小写，如 1020bab3b8bc）\n\n## 固定枚举值说明\n\n### 设备状态 (status)\n- `online`: 在线\n- `offline`: 离线\n\n### 控制模式 (control_mode)\n- `manual_only`: 仅人工\n- `ai_only`: 仅AI\n- `hybrid`: 人工/AI混合\n\n### 设备类别 (category)\n- `sensor`: 传感器\n- `feeder`: 喂食机\n- `camera`: 摄像头\n- `water_pump`: 循环水泵\n- `air_blower`: 鼓风机\n- `water_switch`: 水龙头开关\n- `solar_heater_pump`: 太阳能加热器循环泵\n- `air_pump`: 气泵\n- `physical_filter`: 物理过滤器\n\n### 喂食机状态 (feeder status)\n- `ok`: 正常\n- `warning`: 警告\n- `error`: 错误\n\n## 时间字段说明\n\n预警相关接口返回的时间字段分为 UTC 时间和本地时间两种：\n\n### 预警规则 (AlertRule)\n- `last_checked_at`: 上次检查时间（UTC）\n- `last_checked_at_local`: 上次检查时间（本地时间）\n\n### 预警通知 (AlertNotification)\n- `triggered_at`: 预警触发时间（UTC）\n- `triggered_at_local`: 预警触发时间（本地时间）\n- `resolved_at`: 解决时间（UTC）\n- `resolved_at_local`: 解决时间（本地时间）\n\n### 本地时区配置\n本地时间的时区由后端配置 `Config.LOCAL_TIMEZONE_OFFSET` 决定，默认为 UTC+9（日本标准时间）。可通过环境变量 `LOCAL_TIMEZONE_OFFSET` 修改。",
     "version": "2.0.0",
     "contact": {
       "name": "API Support"
@@ -827,7 +827,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"]
+              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"]
             }
           },
           {
@@ -1033,7 +1033,7 @@
       "post": {
         "tags": ["设备管理"],
         "summary": "创建新设备",
-        "description": "创建新设备记录（统一设备表架构）。\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型如sensor、feeder等获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**，根据sensor_type列表获取）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式，包含连接地址、账户名、密码等）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的 `devices` 表中\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在 `device_specific_config` 字段中",
+        "description": "创建新设备记录（统一设备表架构）。\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型如sensor、feeder等获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**，根据sensor_type列表获取）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式。API类设备填写 url/username/password；MAC类设备填写 mac_address，详见设备连接信息说明）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的 `devices` 表中\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在 `device_specific_config` 字段中",
         "operationId": "createDevice",
         "requestBody": {
           "description": "新设备信息",
@@ -1121,7 +1121,7 @@
       "put": {
         "tags": ["设备管理"],
         "summary": "更新设备信息",
-        "description": "更新设备信息，支持部分更新。\n\n**只允许更新以下字段**：\n- `name`：设备名称\n- `description`：设备描述\n- `location`：设备位置\n- `status`：设备状态（online/offline）\n- `device_specific_config`：设备专属配置JSON\n- `connection_info`：设备连接信息JSON（包含连接地址、账户名、密码等）\n- `pond_id`：养殖池ID\n- `control_mode`：权限分配（manual_only/ai_only/hybrid）",
+        "description": "更新设备信息，支持部分更新。\n\n**只允许更新以下字段**：\n- `name`：设备名称\n- `description`：设备描述\n- `location`：设备位置\n- `status`：设备状态（online/offline）\n- `device_specific_config`：设备专属配置JSON\n- `connection_info`：设备连接信息JSON（API类设备填写 url/username/password；MAC类设备填写 mac_address）\n- `pond_id`：养殖池ID\n- `control_mode`：权限分配（manual_only/ai_only/hybrid）",
         "operationId": "updateDevice",
         "parameters": [
           {
@@ -1626,7 +1626,7 @@
       "post": {
         "tags": ["设备管理"],
         "summary": "设备连接测试",
-        "description": "测试设备连接是否正常（统一接口）。\n\n根据设备类别（category）调用对应的连接测试逻辑。\n\n**当前支持的设备类别**：\n- `feeder`: 喂食机\n\n**后续将支持**：\n- `camera`: 摄像头\n- 其他设备类型\n\n**喂食机 (feeder) 的 connection_info 字段**：\n- `base_url`: API地址（必填），如: `https://ffish.huaeran.cn:8081/commonRequest`\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）",
+        "description": "测试设备连接是否正常（统一接口）。\n\n根据设备类别（category）调用对应的连接测试逻辑。\n\n**当前支持的设备类别**：\n- `feeder`: 喂食机（API类）\n- `water_pump`: 循环水泵（MAC类）\n- `air_blower`: 鼓风机（MAC类）\n- `water_switch`: 水龙头开关（MAC类）\n- `solar_heater_pump`: 太阳能加热器循环泵（MAC类）\n- `air_pump`: 气泵（MAC类）\n- `physical_filter`: 物理过滤器（MAC类）\n\n**后续将支持**：\n- `camera`: 摄像头\n- `sensor`: 传感器\n\n**API类设备（喂食机）的 connection_info 字段**：\n- `base_url`: API地址（必填），如: `https://ffish.huaeran.cn:8081/commonRequest`\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）\n\n**MAC类设备（水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器）的 connection_info 字段**：\n- `mac_address`: 设备MAC地址（必填，去冒号小写，如 1020bab3b8bc）",
         "operationId": "testDeviceConnection",
         "requestBody": {
           "description": "设备连接测试请求",
@@ -1638,7 +1638,7 @@
               },
               "examples": {
                 "feeder": {
-                  "summary": "喂食机连接测试",
+                  "summary": "喂食机连接测试（API类）",
                   "value": {
                     "category": "feeder",
                     "connection_info": {
@@ -1647,6 +1647,16 @@
                       "password": "123456"
                     },
                     "timeout": 15
+                  }
+                },
+                "mac_device": {
+                  "summary": "MAC类设备连接测试（水泵/鼓风机/气泵等）",
+                  "value": {
+                    "category": "water_pump",
+                    "connection_info": {
+                      "mac_address": "1020bab3b8bc"
+                    },
+                    "timeout": 10
                   }
                 }
               }
@@ -1745,7 +1755,7 @@
                         "success": false,
                         "message": "❌ 不支持的设备类别: camera",
                         "details": {
-                          "error": "当前支持的设备类别: feeder",
+                          "error": "当前支持的设备类别: feeder, water_pump, air_blower, water_switch, solar_heater_pump, air_pump, physical_filter",
                           "category": "camera"
                         }
                       }
@@ -1794,7 +1804,7 @@
                           "items": {
                             "type": "string"
                           },
-                          "example": ["feeder"]
+                          "example": ["feeder", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"]
                         }
                       }
                     }
@@ -3467,7 +3477,7 @@
       "get": {
         "tags": ["养殖池实时监控"],
         "summary": "获取养殖池设备列表",
-        "description": "获取指定养殖池下所有设备，包括传感器、喂食机、摄像头、循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵等。支持按设备类别筛选。\n\n**can_control 字段说明**（后端自动计算，前端据此决定是否显示开关按钮）：\n- `true`：设备在线（status=online）且 control_mode 为 manual_only 或 hybrid 且 传感器类设备\n- `false`：其他情况（设备离线 / control_mode 为 ai_only / 非传感器类设备如喂食机、摄像头等）",
+        "description": "获取指定养殖池下所有设备，包括传感器、喂食机、摄像头、循环水泵、鼓风机、水龙头开关、太阳能加热器循环泵、气泵、物理过滤器等。支持按设备类别筛选。\n\n**can_control 字段说明**（后端自动计算，前端据此决定是否显示开关按钮）：\n- `true`：设备在线（status=online）且 control_mode 为 manual_only 或 hybrid 且 设备类型为 MAC 类设备（water_pump/air_blower/water_switch/solar_heater_pump/air_pump/physical_filter）\n- `false`：其他情况（设备离线 / control_mode 为 ai_only / 非 MAC 类设备如传感器、摄像头、喂食机等）",
         "operationId": "getPondDevices",
         "parameters": [
           {
@@ -3487,7 +3497,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"]
+              "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"]
             }
           }
         ],
@@ -3527,7 +3537,7 @@
                         "status": "online",
                         "is_running": false,
                         "control_mode": "hybrid",
-                        "can_control": true,
+                        "can_control": false,
                         "location": "一号池中央区域"
                       },
                       {
@@ -3560,7 +3570,7 @@
                         "status": "online",
                         "is_running": false,
                         "control_mode": "manual_only",
-                        "can_control": false,
+                        "can_control": true,
                         "location": "一号池进水口"
                       },
                       {
@@ -3593,7 +3603,7 @@
       "post": {
         "tags": ["设备管理"],
         "summary": "设备开关控制",
-        "description": "发送开/关控制指令给指定设备。\n\n**前置校验**：\n- 设备必须存在且未删除\n- 设备必须在线（status=online）\n- 设备类型不能是传感器（sensor）或摄像头（camera）\n- 设备 control_mode 不能是 ai_only（仅AI控制模式不支持手动操作）\n\n**action 取值**：\n- `start`：启动设备\n- `stop`：停止设备",
+        "description": "通过 MQTT 发送开/关控制指令给指定设备。仅支持 MAC 类设备（通过 connection_info.mac_address 通信）。\n\n**支持控制的设备类型**：\n- `water_pump`：循环水泵\n- `air_blower`：鼓风机\n- `water_switch`：水龙头开关\n- `solar_heater_pump`：太阳能加热器循环泵\n- `air_pump`：气泵\n- `physical_filter`：物理过滤器\n\n**不支持控制的设备类型**：\n- `sensor`：传感器（只读设备）\n- `camera`：摄像头（只读设备）\n- `feeder`：喂食机（通过云端API控制，不走MQTT）\n\n**前置校验**：\n- 设备必须存在且未删除\n- 设备必须在线（status=online）\n- 设备类型必须是上述支持控制的类型\n- 设备 control_mode 不能是 ai_only（仅AI控制模式不支持手动操作）\n- 设备 connection_info 中必须包含 mac_address，否则返回无法下发控制指令\n\n**action 取值**：\n- `start`：启动设备\n- `stop`：停止设备",
         "operationId": "controlDevice",
         "parameters": [
           {
@@ -3646,10 +3656,12 @@
                   "code": 200,
                   "message": "控制指令已发送",
                   "data": {
-                    "device_id": 5,
-                    "name": "一号池自动喂食机",
+                    "device_id": 6,
+                    "mac": "1020bab3b8bc",
+                    "name": "一号池循环水泵",
                     "action": "start",
-                    "is_running": true
+                    "is_running": true,
+                    "request_id": "a1b2c3d4"
                   }
                 }
               }
@@ -3705,6 +3717,14 @@
                     "value": {
                       "code": 400,
                       "message": "action 只允许 start 或 stop",
+                      "data": null
+                    }
+                  },
+                  "noMacAddress": {
+                    "summary": "未配置MAC地址",
+                    "value": {
+                      "code": 400,
+                      "message": "该设备未配置 MAC 地址，无法下发控制指令",
                       "data": null
                     }
                   }
@@ -4304,7 +4324,7 @@
           "device_category": {
             "type": "string",
             "description": "设备类别",
-            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"],
+            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"],
             "example": "sensor"
           },
           "model": {
@@ -4340,7 +4360,7 @@
           "connection_info": {
             "type": "object",
             "nullable": true,
-            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "description": "设备连接信息（JSON格式）。API类设备（喂食机/摄像头/传感器）填写 {url, username, password}；MAC类设备（循环水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器）填写 {mac_address}（去冒号小写，如 1020bab3b8bc）",
             "example": {
               "url": "http://192.168.1.100",
               "username": "admin",
@@ -4497,7 +4517,7 @@
       },
       "DeviceCreateRequest": {
         "type": "object",
-        "description": "创建设备请求体（统一设备表架构）\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式，包含连接地址、账户名、密码等）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的devices表中\n- 传感器设备不需要在device_specific_config中存储类型信息（通过sensor_type_id关联sensor_types表获取）\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在device_specific_config字段中（如喂食机的feed_count、摄像头的resolution等）\n- 设备连接信息（连接地址、账户名、密码等）统一放在connection_info字段中",
+        "description": "创建设备请求体（统一设备表架构）\n\n**必填字段**（后端必须接收）：\n- `name`: 设备名称\n- `device_type_id`: 设备类型ID（根据用户选择的设备类型获取）\n- `sensor_type_id`: 传感器类型ID（**仅当设备类型为sensor时必填**）\n- `pond_id`: 养殖池ID\n- `location`: 设备安装位置\n- `control_mode`: 权限分配（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**前端需要填写的字段**（与devices表字段对应）：\n\n**必填字段**：\n- 设备名称（对应`name`，必填）\n- 设备类型（对应`device_type_id`，必填，根据用户选择的设备类型获取）\n- 传感器小分类（对应`sensor_type_id`，**仅当设备类型为传感器时显示和必填**，根据sensor_type列表获取）\n- 养殖池位（对应`pond_id`，必填）\n- 设备安装位置（对应`location`，必填）\n- 权限分配（对应`control_mode`，必填，manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同）\n\n**可选字段**（前端可填写）：\n- 设备描述（对应`description`，可选）\n- 设备连接信息（对应`connection_info`，可选，JSON格式。API类设备填写 url/username/password；MAC类设备填写 mac_address，详见设备连接信息说明）\n- 设备状态（对应`status`，可选，默认：online）\n- 设备专属配置（对应`device_specific_config`，可选，JSON格式，根据设备类型填写对应字段，详见设备类型特殊字段映射）\n- 设备标签（对应`tags`，可选，逗号分隔）\n\n**后端可选字段**（前端不展示，通过其他接口填充）：\n- 设备归属（对应`ownership`，可选）\n- 设备型号（对应`model`，可选）\n- 制造商（对应`manufacturer`，可选）\n- 设备序列号（对应`serial_number`，可选，唯一）\n\n**系统字段**（前端不需要填写，后端自动处理）：\n- `device_id`: 设备唯一标识符（UUID格式，后端自动生成）\n- `id`: 主键ID（数据库自动生成）\n- `is_deleted`: 软删除标记（系统字段）\n- `created_at`: 创建时间（系统字段）\n- `updated_at`: 更新时间（系统字段）\n\n**其他说明**：\n- 所有设备都存储在统一的devices表中\n- 传感器设备不需要在device_specific_config中存储类型信息（通过sensor_type_id关联sensor_types表获取）\n- 其他设备类型（喂食机、摄像头、水泵等）的特有配置统一放在device_specific_config字段中（如喂食机的feed_count、摄像头的resolution等）\n- 设备连接信息统一放在connection_info字段中（API类设备填写 url/username/password，MAC类设备填写 mac_address）",
         "required": ["name", "device_type_id", "pond_id", "location", "control_mode"],
         "properties": {
           "name": {
@@ -4555,7 +4575,7 @@
           "connection_info": {
             "type": "object",
             "nullable": true,
-            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "description": "设备连接信息（JSON格式）。API类设备（喂食机/摄像头/传感器）填写 {url, username, password}；MAC类设备（循环水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器）填写 {mac_address}（去冒号小写，如 1020bab3b8bc）",
             "example": {
               "url": "http://192.168.1.100",
               "username": "admin",
@@ -4632,7 +4652,7 @@
           "connection_info": {
             "type": "object",
             "nullable": true,
-            "description": "设备连接信息（JSON格式），包含连接地址、账户名、密码等连接相关配置",
+            "description": "设备连接信息（JSON格式）。API类设备（喂食机/摄像头/传感器）填写 {url, username, password}；MAC类设备（循环水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器）填写 {mac_address}（去冒号小写，如 1020bab3b8bc）",
             "example": {
               "url": "http://192.168.1.100",
               "username": "admin",
@@ -4685,18 +4705,13 @@
         "properties": {
           "category": {
             "type": "string",
-            "description": "设备类别（当前支持：feeder）",
-            "enum": ["feeder"],
+            "description": "设备类别（当前支持：feeder、water_pump、air_blower、water_switch、solar_heater_pump、air_pump、physical_filter）",
+            "enum": ["feeder", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"],
             "example": "feeder"
           },
           "connection_info": {
             "type": "object",
-            "description": "连接信息，不同设备类型字段不同。\n\n**喂食机 (feeder)**:\n- `base_url`: API地址（必填）\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/FeederConnectionInfo"
-              }
-            ]
+            "description": "连接信息，不同设备类型字段不同。\n\n**API类 - 喂食机 (feeder)**:\n- `base_url`: API地址（必填）\n- `user_id`: 用户名（必填）\n- `password`: 密码（必填）\n\n**MAC类 - 水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器**:\n- `mac_address`: 设备MAC地址（必填，去冒号小写，如 1020bab3b8bc）"
           },
           "timeout": {
             "type": "integer",
@@ -5532,7 +5547,7 @@
           "category": {
             "type": "string",
             "description": "设备类别",
-            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump"],
+            "enum": ["sensor", "feeder", "camera", "water_pump", "air_blower", "water_switch", "solar_heater_pump", "air_pump", "physical_filter"],
             "example": "feeder"
           },
           "category_name": {
@@ -5559,7 +5574,7 @@
           },
           "can_control": {
             "type": "boolean",
-            "description": "是否可手动控制（后端计算：设备在线 + control_mode 为 manual_only 或 hybrid + 传感器类设备）",
+            "description": "是否可手动控制（后端计算：设备在线 + control_mode 为 manual_only 或 hybrid + MAC类设备如水泵/鼓风机/水龙头开关/太阳能加热器循环泵/气泵/物理过滤器）",
             "example": true
           },
           "location": {
@@ -5590,12 +5605,17 @@
           "device_id": {
             "type": "integer",
             "description": "设备主键ID",
-            "example": 5
+            "example": 6
+          },
+          "mac": {
+            "type": "string",
+            "description": "设备MAC地址（去冒号小写）",
+            "example": "1020bab3b8bc"
           },
           "name": {
             "type": "string",
             "description": "设备名称",
-            "example": "一号池自动喂食机"
+            "example": "一号池循环水泵"
           },
           "action": {
             "type": "string",
@@ -5607,6 +5627,11 @@
             "type": "boolean",
             "description": "控制后的运行状态",
             "example": true
+          },
+          "request_id": {
+            "type": "string",
+            "description": "MQTT 请求追踪ID，用于匹配设备回复",
+            "example": "a1b2c3d4"
           }
         }
       },
