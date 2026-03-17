@@ -37,6 +37,7 @@ def main():
             logger.error(f"启动聚合服务失败: {e}")
 
         # 启动心跳 WebSocket 监控服务（后台线程）
+        heartbeat_service = None
         try:
             heartbeat_service = HeartbeatWSService(
                 ws_port=Config.HEARTBEAT_WS_PORT,
@@ -54,6 +55,22 @@ def main():
             MQTTService.init()
         except Exception as e:
             logger.error(f"启动 MQTT 服务失败: {e}")
+
+        # 启动设备连接监控服务（后台线程）
+        try:
+            from services.device_monitor_service import DeviceMonitorService
+            device_monitor = DeviceMonitorService(
+                mqtt_check_interval=Config.DEVICE_MQTT_CHECK_INTERVAL,
+                mqtt_timeout=Config.DEVICE_MQTT_TIMEOUT,
+                mqtt_probe_wait=Config.DEVICE_MQTT_PROBE_WAIT,
+                api_check_interval=Config.DEVICE_API_CHECK_INTERVAL,
+                api_connect_timeout=Config.DEVICE_API_CONNECT_TIMEOUT,
+                alert_cooldown=Config.DEVICE_ALERT_COOLDOWN,
+                heartbeat_service=heartbeat_service,
+            )
+            device_monitor.start()
+        except Exception as e:
+            logger.error(f"启动设备监控服务失败: {e}")
 
     # 启动Flask服务器
     app.run(

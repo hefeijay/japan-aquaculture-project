@@ -172,11 +172,13 @@ def pond_camera_image(pond_id: int, device_id: int):
 def pond_devices(pond_id: int):
     """
     获取指定养殖池下所有设备，支持按设备类别筛选。
+    支持 stream=true 开启 SSE 实时推送。
     """
     category = request.args.get("category")
     valid_categories = (
         "sensor", "feeder", "camera", "water_pump",
         "air_blower", "water_switch", "solar_heater_pump",
+        "air_pump", "physical_filter",
     )
     if category and category not in valid_categories:
         return jsonify({
@@ -184,6 +186,19 @@ def pond_devices(pond_id: int):
             "message": f"无效的设备类别，可选值: {', '.join(valid_categories)}",
             "data": None,
         }), 400
+
+    if _is_stream(request):
+        return Response(
+            _sse_generator(
+                lambda: PondRealtimeService.get_pond_devices(pond_id, category=category)
+            ),
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     data, err = PondRealtimeService.get_pond_devices(pond_id, category=category)
     if err:

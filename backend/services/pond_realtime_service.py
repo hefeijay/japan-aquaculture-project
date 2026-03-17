@@ -115,6 +115,7 @@ class PondRealtimeService:
                         and cat in mac_categories
                     )
 
+                    _status_labels = {"online": "在线", "offline": "离线", "disabled": "已禁用"}
                     devices.append(
                         {
                             "device_id": device.id,
@@ -122,7 +123,9 @@ class PondRealtimeService:
                             "category": cat,
                             "category_name": device_type.name,
                             "status": device.status,
+                            "status_label": _status_labels.get(device.status, device.status),
                             "is_running": is_running,
+                            "is_running_label": "运行中" if is_running else "已停止",
                             "control_mode": device.control_mode,
                             "can_control": can_control,
                             "location": device.location,
@@ -374,6 +377,7 @@ class PondRealtimeService:
                             )
                         )
                         .order_by(desc(AIDecision.priority), desc(AIDecision.created_at))
+                        .limit(10)
                         .all()
                     )
                     for d in decisions:

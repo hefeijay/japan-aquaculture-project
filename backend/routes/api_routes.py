@@ -1233,7 +1233,7 @@ def get_device_list():
     返回设备完整信息，传感器类型信息放在info字段，其他设备类型从device_specific_config获取
     
     Query Parameters:
-        status: 设备状态（online/offline，可选）
+        status: 设备状态（online/offline/disabled，可选）
         pond_id: 养殖池ID（可选）
         control_mode: 控制权限模式（manual_only/ai_only/hybrid，可选）
         category: 设备类别（sensor/feeder/camera等，可选）
@@ -1250,7 +1250,7 @@ def get_device_list():
         from db_models.sensor_type import SensorType
         
         # 获取查询参数
-        status = request.args.get('status')  # online 或 offline
+        status = request.args.get('status')  # online / offline / disabled
         pond_id = request.args.get('pond_id', type=int)
         control_mode = request.args.get('control_mode')  # manual_only, ai_only, hybrid
         category = request.args.get('category')  # sensor, feeder, camera, water_pump, air_blower等
@@ -1366,6 +1366,10 @@ def get_device_list():
                 device_category = device_type.category if device_type else None
                 
                 # 构建基础设备信息（device表的所有字段）
+                _status_labels = {"online": "在线", "offline": "离线", "disabled": "已禁用"}
+                _dsc = device.device_specific_config or {}
+                _is_running = bool(_dsc.get("is_running", False))
+
                 device_info = {
                     "id": device.id,
                     "device_id": device.device_id,
@@ -1385,6 +1389,9 @@ def get_device_list():
                     "device_specific_config": device.device_specific_config,
                     "tags": device.tags,
                     "status": device.status,
+                    "status_label": _status_labels.get(device.status, device.status),
+                    "is_running": _is_running,
+                    "is_running_label": "运行中" if _is_running else "已停止",
                     "control_mode": device.control_mode,
                     "created_at": device.created_at.isoformat() if device.created_at else None,
                     "updated_at": device.updated_at.isoformat() if device.updated_at else None,
@@ -1597,7 +1604,7 @@ def create_device():
                 manufacturer=data.get('manufacturer'),
                 serial_number=data.get('serial_number'),
                 connection_info=connection_info,
-                status=data.get('status', default_status),
+                status=default_status,
                 control_mode=data['control_mode'],
                 device_specific_config=device_specific_config,
                 tags=data.get('tags'),
@@ -1644,7 +1651,7 @@ def update_device(device_id):
     - name: 设备名称
     - description: 设备描述
     - location: 设备位置
-    - status: 设备状态（online/offline）
+    - status: 设备状态（online/offline/disabled）
     - device_specific_config: 设备专属配置JSON
     - connection_info: 设备连接信息JSON（包含连接地址、账户名、密码等）
     - pond_id: 养殖池ID
@@ -1716,7 +1723,7 @@ def update_device(device_id):
                 }), 404
             
             # 只允许更新以下字段
-            allowed_fields = ['description', 'name', 'location', 'status', 'device_specific_config', 'connection_info', 'pond_id', 'control_mode']
+            allowed_fields = ['description', 'name', 'location', 'device_specific_config', 'connection_info', 'pond_id', 'control_mode']
             
             # 检查是否有不允许更新的字段
             invalid_fields = [field for field in data.keys() if field not in allowed_fields]
@@ -1740,15 +1747,6 @@ def update_device(device_id):
                     return jsonify({
                         "code": 400,
                         "message": "name 长度必须在1-128个字符之间",
-                        "data": None
-                    }), 400
-            
-            # 验证status字段（如果提供了）
-            if 'status' in data:
-                if data['status'] not in ['online', 'offline']:
-                    return jsonify({
-                        "code": 400,
-                        "message": "status 必须是 'online' 或 'offline'",
                         "data": None
                     }), 400
             

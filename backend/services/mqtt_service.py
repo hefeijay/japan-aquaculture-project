@@ -8,6 +8,7 @@ ESP32 设备通过 MAC 地址标识，MAC 存储在 devices.connection_info["mac
 
 import json
 import logging
+import time
 import uuid
 import threading
 from typing import Optional
@@ -133,12 +134,17 @@ class MQTTService:
                 if device:
                     config = device.device_specific_config or {}
                     config["mqtt_connected"] = online
+
+                    if online:
+                        config["last_heartbeat_ts"] = time.time()
+                        device.status = "online"
+                        config.pop("disabled_reason", None)
                     device.device_specific_config = config
 
                     from sqlalchemy.orm.attributes import flag_modified
                     flag_modified(device, "device_specific_config")
                     session.commit()
-                    logger.info(f"设备 MAC={mac} ({device.name}) MQTT {state}")
+                    logger.info(f"设备 MAC={mac} ({device.name}) MQTT {state}, status={device.status}")
                 else:
                     logger.warning(f"收到未注册设备的上线消息: MAC={mac}")
         except Exception as e:
@@ -161,6 +167,12 @@ class MQTTService:
                 config["rssi"] = payload.get("rssi", 0)
                 config["uptime_s"] = payload.get("uptime_s", 0)
                 config["last_heartbeat"] = payload.get("uptime_s", 0)
+                config["last_heartbeat_ts"] = time.time()
+
+                if device.status != "online":
+                    device.status = "online"
+                    config.pop("disabled_reason", None)
+
                 device.device_specific_config = config
 
                 from sqlalchemy.orm.attributes import flag_modified
@@ -194,7 +206,6 @@ class MQTTService:
                         is_running = (last_command == "start")
                         config["is_running"] = is_running
                         device.device_specific_config = config
-                        device.status = "online" if is_running else "offline"
 
                         from sqlalchemy.orm.attributes import flag_modified
                         flag_modified(device, "device_specific_config")
@@ -235,6 +246,20 @@ class MQTTService:
         cls._client.publish(topic, json.dumps(payload), qos=1)
         logger.info(f"已发布: {topic} → {payload}")
         return request_id
+
+    # ----------------------------------------------------------------
+    # 设备状态查询（供 DeviceMonitorService 使用）
+    # ----------------------------------------------------------------
+
+    @classmethod
+    def publish_status_query(cls, mac: str) -> bool:
+        """通过已有 MQTT 连接向设备发送 status 查询，不新建连接"""
+        if not cls._client or not cls._connected:
+            return False
+        topic = f"aqua/devices/{mac}/control"
+        payload = json.dumps({"action": "status", "request_id": "health-check"})
+        cls._client.publish(topic, payload, qos=1)
+        return True
 
     # ----------------------------------------------------------------
     # 工具方法

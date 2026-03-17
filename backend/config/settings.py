@@ -265,3 +265,11 @@ class Config:
     MQTT_BROKER_PORT = int(os.getenv('MQTT_BROKER_PORT', '1883'))
     MQTT_USER = os.getenv('MQTT_USER', 'aqua_device')
     MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', '')
+
+    # ==================== 设备连接监控配置 ====================
+    DEVICE_MQTT_CHECK_INTERVAL = int(os.getenv('DEVICE_MQTT_CHECK_INTERVAL', '30'))
+    DEVICE_MQTT_TIMEOUT = int(os.getenv('DEVICE_MQTT_TIMEOUT', '600'))
+    DEVICE_MQTT_PROBE_WAIT = int(os.getenv('DEVICE_MQTT_PROBE_WAIT', '10'))
+    DEVICE_API_CHECK_INTERVAL = int(os.getenv('DEVICE_API_CHECK_INTERVAL', '120'))
+    DEVICE_API_CONNECT_TIMEOUT = int(os.getenv('DEVICE_API_CONNECT_TIMEOUT', '10'))
+    DEVICE_ALERT_COOLDOWN = int(os.getenv('DEVICE_ALERT_COOLDOWN', '3600'))

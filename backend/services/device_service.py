@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 DEVICE_STATUS_COLORS = {
     "online": "#20B2AA",
     "offline": "#ff6b35",
+    "disabled": "#ff4444",
     "maintenance": "#ffa500",
     "standby": "#41b3d3"
 }
@@ -399,7 +400,7 @@ class DeviceConnectionTester:
                 "password": password,
             }
             
-            logger.info(f"测试喂食机连接: {base_url}, 用户: {user_id}")
+            logger.debug(f"测试喂食机连接: {base_url}, 用户: {user_id}")
             
             # 发送POST请求
             resp = requests.post(
@@ -417,7 +418,7 @@ class DeviceConnectionTester:
             status = data.get("status")
             if status == 1:
                 authkey = data.get("data", [{}])[0].get("authkey", "")
-                logger.info(f"喂食机连接测试成功: {base_url}")
+                logger.debug(f"喂食机连接测试成功: {base_url}")
                 return {
                     "success": True,
                     "message": "✅ 连接测试成功，设备可以正常连接",

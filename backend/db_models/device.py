@@ -119,7 +119,7 @@ class Device(Base):
         String(50), 
         default="online", 
         nullable=False,
-        comment="设备状态（online=在线/offline=离线，默认：online）"
+        comment="设备连接状态（online=在线/offline=离线/disabled=已禁用，由监控服务自动管理）"
     )
 
     # 控制权限模式（manual_only=仅人工/ai_only=仅AI/hybrid=人工+AI协同，默认：hybrid）
