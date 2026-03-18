@@ -300,12 +300,6 @@ class DeviceMonitorService:
 
             for device, dt in rows:
                 probe_success = results.get(device.id, False)
-                if probe_success:
-                    config = device.device_specific_config or {}
-                    config["last_heartbeat_ts"] = now
-                    device.device_specific_config = config
-                    flag_modified(device, "device_specific_config")
-
                 self._update_device_status(session, device, probe_success, now)
                 status_label = "online" if probe_success else "offline"
                 logger.info("设备 %s (%s) API 探测: %s", device.name, device.id, status_label)
@@ -329,6 +323,8 @@ class DeviceMonitorService:
 
             if old_status == "disabled":
                 self._send_recovery_alert(device, config, last_ts, now)
+
+            config["last_heartbeat_ts"] = now
 
         else:
             config["last_connection_check"] = now_iso
