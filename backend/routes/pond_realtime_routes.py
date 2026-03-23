@@ -251,11 +251,11 @@ def device_control(device_id: int):
             "code": 400,
             "message": "缺少必填参数 action",
             "data": None,
-        }), 400
+        })
 
     data, err, status_code = PondRealtimeService.control_device(
         device_id, body["action"]
     )
     if err:
-        return jsonify({"code": status_code, "message": err, "data": None}), status_code
+        return jsonify({"code": status_code, "message": err, "data": None})
     return jsonify({"code": 200, "message": "控制指令已发送", "data": data})
