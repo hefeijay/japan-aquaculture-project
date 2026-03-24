@@ -65,6 +65,7 @@ def main():
                 mqtt_probe_wait=Config.DEVICE_MQTT_PROBE_WAIT,
                 api_check_interval=Config.DEVICE_API_CHECK_INTERVAL,
                 api_connect_timeout=Config.DEVICE_API_CONNECT_TIMEOUT,
+                api_offline_timeout=Config.DEVICE_API_OFFLINE_TIMEOUT,
                 alert_cooldown=Config.DEVICE_ALERT_COOLDOWN,
                 heartbeat_service=heartbeat_service,
             )

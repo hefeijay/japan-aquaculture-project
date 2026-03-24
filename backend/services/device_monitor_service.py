@@ -51,6 +51,7 @@ class DeviceMonitorService:
         mqtt_probe_wait: int = 10,
         api_check_interval: int = 120,
         api_connect_timeout: int = 10,
+        api_offline_timeout: int = 600,
         alert_cooldown: int = 3600,
         heartbeat_service=None,
     ):
@@ -59,6 +60,7 @@ class DeviceMonitorService:
         self.mqtt_probe_wait = mqtt_probe_wait
         self.api_check_interval = api_check_interval
         self.api_connect_timeout = api_connect_timeout
+        self.api_offline_timeout = api_offline_timeout
         self.alert_cooldown = alert_cooldown
         self._heartbeat_service = heartbeat_service
 
@@ -96,9 +98,9 @@ class DeviceMonitorService:
 
         logger.info(
             "设备监控服务已启动 (mqtt_interval=%ds, mqtt_timeout=%ds, "
-            "api_interval=%ds, alert_cooldown=%ds)",
+            "api_interval=%ds, api_offline_timeout=%ds, alert_cooldown=%ds)",
             self.mqtt_check_interval, self.mqtt_timeout,
-            self.api_check_interval, self.alert_cooldown,
+            self.api_check_interval, self.api_offline_timeout, self.alert_cooldown,
         )
 
     def stop(self):
@@ -222,7 +224,9 @@ class DeviceMonitorService:
                 else:
                     probe_success = False
 
-                self._update_device_status(session, device, probe_success, now)
+                self._update_device_status(
+                    session, device, probe_success, now, timeout_seconds=self.mqtt_timeout
+                )
                 status_label = "online" if probe_success else "offline"
                 logger.info("设备 %s (%s) MAC 探测: %s", device.name, device.id, status_label)
 
@@ -300,7 +304,9 @@ class DeviceMonitorService:
 
             for device, dt in rows:
                 probe_success = results.get(device.id, False)
-                self._update_device_status(session, device, probe_success, now)
+                self._update_device_status(
+                    session, device, probe_success, now, timeout_seconds=self.api_offline_timeout
+                )
                 status_label = "online" if probe_success else "offline"
                 logger.info("设备 %s (%s) API 探测: %s", device.name, device.id, status_label)
 
@@ -310,7 +316,14 @@ class DeviceMonitorService:
     # 状态转换核心逻辑
     # ------------------------------------------------------------------
 
-    def _update_device_status(self, session, device: Device, probe_success: bool, now: float):
+    def _update_device_status(
+        self,
+        session,
+        device: Device,
+        probe_success: bool,
+        now: float,
+        timeout_seconds: int,
+    ):
         config = device.device_specific_config or {}
         last_ts = config.get("last_heartbeat_ts")
         now_iso = datetime.now(tz=JST).isoformat()
@@ -333,7 +346,7 @@ class DeviceMonitorService:
                 device.status = "offline"
             else:
                 elapsed = now - last_ts
-                if elapsed >= self.mqtt_timeout:
+                if elapsed >= timeout_seconds:
                     if old_status != "disabled":
                         device.status = "disabled"
                         config["disabled_reason"] = f"超过{int(elapsed)}秒无响应"
