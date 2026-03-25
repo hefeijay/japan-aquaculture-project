@@ -1585,12 +1585,34 @@ def create_device():
             device_specific_config = data.get('device_specific_config')
             if device_specific_config is None:
                 device_specific_config = {}
-            
-            mac_categories = (
-                "water_pump", "air_blower", "water_switch",
-                "solar_heater_pump", "air_pump", "physical_filter",
+
+            default_status = "online"
+            excluded_connection_test_categories = {"camera", "sensor"}
+            from services.device_service import DeviceConnectionTester
+
+            create_time = time.time()
+            connection_test_categories = (
+                set(DeviceConnectionTester.get_supported_categories())
+                - excluded_connection_test_categories
             )
-            default_status = "offline" if device_type.category in mac_categories else "online"
+            if device_type.category in connection_test_categories:
+                test_timeout = max(Config.DEVICE_API_CONNECT_TIMEOUT, 10)
+                test_result = DeviceConnectionTester.test_connection(
+                    device_type.category,
+                    connection_info,
+                    timeout=test_timeout,
+                )
+                if not test_result.get("success"):
+                    return jsonify({
+                        "code": 400,
+                        "message": f"创建设备失败，连接测试未通过: {test_result.get('message', '未知错误')}",
+                        "data": test_result,
+                    }), 400
+
+                if isinstance(device_specific_config, dict):
+                    device_specific_config = dict(device_specific_config)
+                    device_specific_config["last_connection_check"] = datetime.now().isoformat()
+                    device_specific_config["last_heartbeat_ts"] = create_time
 
             device = Device(
                 device_id=device_id,
