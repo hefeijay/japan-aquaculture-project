@@ -3198,7 +3198,7 @@
       "get": {
         "tags": ["养殖池实时监控"],
         "summary": "获取养殖池传感器实时数据",
-        "description": "获取指定养殖池下所有传感器设备的最新读数，包含传感器名称、当前值、单位及正常范围。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE（Server-Sent Events）流：\n- 连接建立时推送一次完整数据\n- 之后有新传感器读数写入时增量推送\n- Content-Type: text/event-stream\n\n**status 字段说明**（后端根据 value 与 valid_min/valid_max 比较自动计算）：\n- `normal`：值在 [valid_min, valid_max] 范围内\n- `abnormal_low`：值低于 valid_min\n- `abnormal_high`：值高于 valid_max",
+        "description": "获取指定养殖池下所有传感器设备的实时监控数据，包含最新读数、最近五条历史数据以及基于最近五条数据生成的预测结果。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE（Server-Sent Events）流：\n- 连接建立时推送一次完整数据\n- 之后当任一传感器最近五条历史数据发生变化时推送更新\n- Content-Type: text/event-stream\n\n**预测触发规则**：\n- 后端以每个传感器最近五条历史数据作为预测输入\n- 只有最近五条历史数据发生变化时，才重新触发预测\n- 如果最近五条历史数据未变化，则复用上一次预测结果\n- 当前阶段天气变化不作为重新触发预测的条件\n\n**prediction.trend 字段说明**：\n- `up`：预测值呈上升趋势\n- `down`：预测值呈下降趋势\n- `stable`：预测值整体保持稳定\n\n**status 字段说明**（后端根据 latest_value 与 valid_min/valid_max 比较自动计算）：\n- `normal`：值在 [valid_min, valid_max] 范围内\n- `abnormal_low`：值低于 valid_min\n- `abnormal_high`：值高于 valid_max",
         "operationId": "getPondSensorsRealtime",
         "parameters": [
           {
@@ -3214,7 +3214,7 @@
           {
             "name": "stream",
             "in": "query",
-            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream）",
+            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream；仅当最近五条历史数据发生变化时推送新结果）",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -3224,7 +3224,7 @@
         ],
         "responses": {
           "200": {
-            "description": "成功获取传感器实时数据。stream=false 时返回 application/json；stream=true 时返回 text/event-stream（SSE流中每个事件的 data 字段格式与 JSON 响应的 data 字段相同）",
+            "description": "成功获取传感器实时数据。stream=false 时返回 application/json；stream=true 时返回 text/event-stream（SSE流中每个事件的 data 字段格式与 JSON 响应的 data 字段相同）。返回内容包含最新值、最近五条历史数据和预测结果。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3260,7 +3260,42 @@
                         "valid_max": 15.0,
                         "status": "normal",
                         "recorded_at": "2026-03-06T10:30:00Z",
-                        "recorded_at_local": "2026-03-06T19:30:00+09:00"
+                        "recorded_at_local": "2026-03-06T19:30:00+09:00",
+                        "history_points": [
+                          {
+                            "timestamp": 1772789400000,
+                            "value": 7.2,
+                            "time": "18:50"
+                          },
+                          {
+                            "timestamp": 1772790000000,
+                            "value": 7.3,
+                            "time": "19:00"
+                          },
+                          {
+                            "timestamp": 1772790600000,
+                            "value": 7.4,
+                            "time": "19:10"
+                          },
+                          {
+                            "timestamp": 1772791200000,
+                            "value": 7.4,
+                            "time": "19:20"
+                          },
+                          {
+                            "timestamp": 1772791800000,
+                            "value": 7.5,
+                            "time": "19:30"
+                          }
+                        ],
+                        "prediction": {
+                          "predicted_value": 7.6,
+                          "trend": "stable",
+                          "analysis_text": "溶解氧整体保持稳定并轻微上升。",
+                          "reason_text": "最近五条历史数据连续小幅上升，短期内预计仍将保持平稳。",
+                          "predicted_for_at": "2026-03-06T10:40:00Z",
+                          "predicted_for_at_local": "2026-03-06T19:40:00+09:00"
+                        }
                       },
                       {
                         "device_id": 2,
@@ -3272,7 +3307,42 @@
                         "valid_max": 9.0,
                         "status": "abnormal_low",
                         "recorded_at": "2026-03-06T10:30:00Z",
-                        "recorded_at_local": "2026-03-06T19:30:00+09:00"
+                        "recorded_at_local": "2026-03-06T19:30:00+09:00",
+                        "history_points": [
+                          {
+                            "timestamp": 1772789400000,
+                            "value": 6.5,
+                            "time": "18:50"
+                          },
+                          {
+                            "timestamp": 1772790000000,
+                            "value": 6.4,
+                            "time": "19:00"
+                          },
+                          {
+                            "timestamp": 1772790600000,
+                            "value": 6.3,
+                            "time": "19:10"
+                          },
+                          {
+                            "timestamp": 1772791200000,
+                            "value": 6.3,
+                            "time": "19:20"
+                          },
+                          {
+                            "timestamp": 1772791800000,
+                            "value": 6.2,
+                            "time": "19:30"
+                          }
+                        ],
+                        "prediction": {
+                          "predicted_value": 6.1,
+                          "trend": "down",
+                          "analysis_text": "pH 仍处于下降趋势。",
+                          "reason_text": "最近五条历史数据持续走低，短期内预计仍有继续下探风险。",
+                          "predicted_for_at": "2026-03-06T10:40:00Z",
+                          "predicted_for_at_local": "2026-03-06T19:40:00+09:00"
+                        }
                       }
                     ]
                   }
@@ -3281,7 +3351,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "SSE事件流。每个事件格式：data: {JSON}\\n\\n。JSON 格式与 application/json 响应的 data 字段相同（PondSensorsRealtimeData）"
+                  "description": "SSE事件流。每个事件格式：data: {JSON}\\n\\n。JSON 格式与 application/json 响应的 data 字段相同（PondSensorsRealtimeData）。仅当最近五条历史数据发生变化时推送新事件。"
                 }
               }
             }
@@ -5348,7 +5418,7 @@
       },
       "PondSensorsRealtimeData": {
         "type": "object",
-        "description": "养殖池传感器实时数据（作为响应的 data 字段返回，也作为 SSE 事件的 data 内容）",
+        "description": "养殖池传感器实时数据（作为响应的 data 字段返回，也作为 SSE 事件的 data 内容）。每个传感器同时返回最新值、最近五条历史数据和预测结果。",
         "properties": {
           "pond_id": {
             "type": "integer",
@@ -5362,7 +5432,7 @@
           },
           "sensors": {
             "type": "array",
-            "description": "传感器数据列表（每个传感器设备的最新一条读数）",
+            "description": "传感器数据列表（每个传感器设备返回最新一条读数、最近五条历史数据和预测结果）",
             "items": {
               "$ref": "#/components/schemas/PondSensorRealtimeItem"
             }
@@ -5371,7 +5441,7 @@
       },
       "PondSensorRealtimeItem": {
         "type": "object",
-        "description": "单个传感器的实时数据",
+        "description": "单个传感器的实时数据，包含最新值、最近五条历史数据和预测结果",
         "properties": {
           "device_id": {
             "type": "integer",
@@ -5391,7 +5461,7 @@
           "value": {
             "type": "number",
             "nullable": true,
-            "description": "当前读数值（无数据时为null）",
+            "description": "当前最新读数值（无数据时为null）",
             "example": 7.5
           },
           "unit": {
@@ -5415,7 +5485,7 @@
           },
           "status": {
             "type": "string",
-            "description": "数值状态（后端根据 value 与 valid_min/valid_max 比较自动计算）",
+            "description": "数值状态（后端根据最新值与 valid_min/valid_max 比较自动计算）",
             "enum": ["normal", "abnormal_low", "abnormal_high"],
             "example": "normal"
           },
@@ -5432,6 +5502,82 @@
             "nullable": true,
             "description": "读数记录时间（本地时间，默认UTC+9，无数据时为null）",
             "example": "2026-03-06T19:30:00+09:00"
+          },
+          "history_points": {
+            "type": "array",
+            "description": "最近五条历史数据（按时间升序返回，数量不足五条时按实际返回）",
+            "items": {
+              "$ref": "#/components/schemas/SensorHistoryPoint"
+            }
+          },
+          "prediction": {
+            "$ref": "#/components/schemas/SensorPredictionInfo"
+          }
+        }
+      },
+      "SensorHistoryPoint": {
+        "type": "object",
+        "description": "单个传感器历史数据点",
+        "properties": {
+          "timestamp": {
+            "type": "integer",
+            "description": "Unix时间戳（毫秒）",
+            "example": 1772791800000
+          },
+          "value": {
+            "type": "number",
+            "description": "该时间点的读数值",
+            "example": 7.5
+          },
+          "time": {
+            "type": "string",
+            "description": "时间字符串（HH:MM）",
+            "example": "19:30"
+          }
+        }
+      },
+      "SensorPredictionInfo": {
+        "type": "object",
+        "description": "传感器预测结果。仅当最近五条历史数据发生变化时后端重新计算，否则复用上一次预测结果。trend 仅允许 up、down、stable 三种取值。",
+        "properties": {
+          "predicted_value": {
+            "type": "number",
+            "nullable": true,
+            "description": "下一时间点的预测值",
+            "example": 7.6
+          },
+          "trend": {
+            "type": "string",
+            "nullable": true,
+            "description": "预测趋势：up=上升，down=下降，stable=稳定",
+            "enum": ["up", "down", "stable"],
+            "example": "stable"
+          },
+          "analysis_text": {
+            "type": "string",
+            "nullable": true,
+            "description": "当前分析一句话",
+            "example": "溶解氧整体保持稳定并轻微上升。"
+          },
+          "reason_text": {
+            "type": "string",
+            "nullable": true,
+            "description": "预测原因一句话",
+            "example": "最近五条历史数据连续小幅上升，短期内预计仍将保持平稳。"
+          },
+          "predicted_for_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "预测目标时间（UTC）",
+            "example": "2026-03-06T10:40:00Z"
+          },
+          "predicted_for_at_local": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "预测目标时间（本地时间，默认UTC+9）",
+            "example": "2026-03-06T19:40:00+09:00"
           }
         }
       },
