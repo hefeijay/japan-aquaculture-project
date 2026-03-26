@@ -11,6 +11,7 @@ from app_factory import create_app, print_startup_info
 from config.settings import Config 
 from services.aggregator_service import aggregator_service
 from services.heartbeat_ws_service import HeartbeatWSService
+from services.weather_cache_service import weather_cache_service
 
 import logging
 
@@ -35,6 +36,12 @@ def main():
             aggregator_service.start()
         except Exception as e:
             logger.error(f"启动聚合服务失败: {e}")
+
+        # 启动天气缓存更新服务（后台线程）
+        try:
+            weather_cache_service.start()
+        except Exception as e:
+            logger.error(f"启动天气缓存服务失败: {e}")
 
         # 启动心跳 WebSocket 监控服务（后台线程）
         heartbeat_service = None

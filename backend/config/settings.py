@@ -221,6 +221,28 @@ class Config:
     AGGREGATOR_INTERVAL_SECONDS = int(os.getenv('AGGREGATOR_INTERVAL_SECONDS', '3600'))
     AGGREGATOR_DEFAULT_WINDOW_MINUTES = int(os.getenv('AGGREGATOR_DEFAULT_WINDOW_MINUTES', '60'))
     AGGREGATOR_DEFAULT_POND_ID = os.getenv('AGGREGATOR_DEFAULT_POND_ID', '4')
+
+    # ==================== 预测与天气配置 ====================
+    PREDICTION_HISTORY_LIMIT = int(os.getenv('PREDICTION_HISTORY_LIMIT', '5'))
+    PREDICTION_INTERVAL_MINUTES = int(os.getenv('PREDICTION_INTERVAL_MINUTES', '10'))
+    PREDICTION_MODEL_NAME = os.getenv('PREDICTION_MODEL_NAME', 'gpt-4o-mini')
+    PREDICTION_ENABLE_LLM = os.getenv('PREDICTION_ENABLE_LLM', 'false').lower() in ('1', 'true', 'yes')
+    PREDICTION_FALLBACK_ENABLED = os.getenv('PREDICTION_FALLBACK_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    PREDICTION_ASYNC_THREADS = int(os.getenv('PREDICTION_ASYNC_THREADS', '2'))
+    PREDICTION_LLM_MAX_TOKENS = int(os.getenv('PREDICTION_LLM_MAX_TOKENS', '1200'))
+
+    WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', os.getenv('OPENWEATHER_API_KEY', ''))
+    WEATHER_BASE_URL = os.getenv('WEATHER_BASE_URL', 'https://api.openweathermap.org/data/2.5/forecast')
+    WEATHER_DEFAULT_LOCATION = os.getenv('WEATHER_DEFAULT_LOCATION', 'Tsukuba')
+    WEATHER_LANG = os.getenv('WEATHER_LANG', 'zh_cn')
+    WEATHER_UPDATE_INTERVAL_HOURS = int(os.getenv('WEATHER_UPDATE_INTERVAL_HOURS', '3'))
+    WEATHER_CACHE_TTL_HOURS = int(os.getenv('WEATHER_CACHE_TTL_HOURS', '4'))
+
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', os.getenv('PREDICTION_MODEL_NAME', 'gpt-4o-mini'))
+    OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
+    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+    OPENAI_TIMEOUT = int(os.getenv('OPENAI_TIMEOUT', '60'))
     
     # 文件转发配置（可通过环境变量覆盖）
     FILE_FORWARD_URL = os.getenv('FILE_FORWARD_URL', 'http://8.216.33.92:5003/process_file')  # 默认转发到 8.216.33.92/process_file

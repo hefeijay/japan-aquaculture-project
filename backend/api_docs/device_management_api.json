@@ -3198,7 +3198,7 @@
       "get": {
         "tags": ["养殖池实时监控"],
         "summary": "获取养殖池传感器实时数据",
-        "description": "获取指定养殖池下所有传感器设备的实时监控数据，包含最新读数、最近五条历史数据以及基于最近五条数据生成的预测结果。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE（Server-Sent Events）流：\n- 连接建立时推送一次完整数据\n- 之后当任一传感器最近五条历史数据发生变化时推送更新\n- Content-Type: text/event-stream\n\n**预测触发规则**：\n- 后端以每个传感器最近五条历史数据作为预测输入\n- 只有最近五条历史数据发生变化时，才重新触发预测\n- 如果最近五条历史数据未变化，则复用上一次预测结果\n- 当前阶段天气变化不作为重新触发预测的条件\n\n**prediction.trend 字段说明**：\n- `up`：预测值呈上升趋势\n- `down`：预测值呈下降趋势\n- `stable`：预测值整体保持稳定\n\n**status 字段说明**（后端根据 latest_value 与 valid_min/valid_max 比较自动计算）：\n- `normal`：值在 [valid_min, valid_max] 范围内\n- `abnormal_low`：值低于 valid_min\n- `abnormal_high`：值高于 valid_max",
+        "description": "获取指定养殖池下所有传感器设备的实时监控数据，包含最新读数、最近五条历史数据以及基于最近五条数据生成的预测结果。\n\n**实时推送模式**：当 `stream=true` 时，返回 SSE（Server-Sent Events）流：\n- 连接建立时推送一次完整数据\n- 之后当任一传感器最近五条历史数据发生变化，或预测结果发生变化时推送更新\n- Content-Type: text/event-stream\n\n**预测触发规则**：\n- 后端以每个传感器最近五条历史数据作为预测输入\n- 只有最近五条历史数据发生变化时，才重新触发预测\n- 如果最近五条历史数据未变化，则复用上一次预测结果\n- 当前阶段天气变化不作为重新触发预测的条件\n\n**异步返回说明**：\n- 当前接口采用“实时数据优先、预测异步补齐”的两阶段返回策略\n- 当传感器最新数据或最近五条历史数据刚发生变化时，接口会先返回最新实时数据\n- 同时后端异步生成新的预测结果，因此前端可能先看到实时数据变化，再看到预测结果变化\n- 当 `prediction.prediction_status=pending` 时，表示“实时数据已更新，但新预测仍在后台计算中”\n- `pending` 状态下，如果 `predicted_value` 仍有值，通常表示当前先返回上一版可用预测结果；如果为 `null`，表示当前尚无可展示的预测结果\n- 因此前端建议明确展示状态文案，例如“实时数据已更新，预测计算中”或“当前展示上一版预测结果”\n\n**prediction.trend 字段说明**：\n- `up`：预测值呈上升趋势\n- `down`：预测值呈下降趋势\n- `stable`：预测值整体保持稳定\n\n**status 字段说明**（后端根据 latest_value 与 valid_min/valid_max 比较自动计算）：\n- `normal`：值在 [valid_min, valid_max] 范围内\n- `abnormal_low`：值低于 valid_min\n- `abnormal_high`：值高于 valid_max",
         "operationId": "getPondSensorsRealtime",
         "parameters": [
           {
@@ -3214,7 +3214,7 @@
           {
             "name": "stream",
             "in": "query",
-            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream；仅当最近五条历史数据发生变化时推送新结果）",
+            "description": "是否开启SSE实时推送（默认false返回JSON，true返回text/event-stream；当最近五条历史数据发生变化或预测结果变化时推送新结果）",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -3289,6 +3289,7 @@
                           }
                         ],
                         "prediction": {
+                          "prediction_status": "ready",
                           "predicted_value": 7.6,
                           "trend": "stable",
                           "analysis_text": "溶解氧整体保持稳定并轻微上升。",
@@ -3336,6 +3337,7 @@
                           }
                         ],
                         "prediction": {
+                          "prediction_status": "ready",
                           "predicted_value": 6.1,
                           "trend": "down",
                           "analysis_text": "pH 仍处于下降趋势。",
@@ -3351,7 +3353,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "SSE事件流。每个事件格式：data: {JSON}\\n\\n。JSON 格式与 application/json 响应的 data 字段相同（PondSensorsRealtimeData）。仅当最近五条历史数据发生变化时推送新事件。"
+                "description": "SSE事件流。每个事件格式：data: {JSON}\\n\\n。JSON 格式与 application/json 响应的 data 字段相同（PondSensorsRealtimeData）。当最近五条历史数据发生变化或预测结果变化时推送新事件。"
                 }
               }
             }
@@ -5538,8 +5540,14 @@
       },
       "SensorPredictionInfo": {
         "type": "object",
-        "description": "传感器预测结果。仅当最近五条历史数据发生变化时后端重新计算，否则复用上一次预测结果。trend 仅允许 up、down、stable 三种取值。",
+        "description": "传感器预测结果。仅当最近五条历史数据发生变化时后端重新计算，否则复用上一次预测结果。当前接口采用“实时数据先返回、预测结果异步更新”的策略，因此实时数据与预测结果可能短暂不同步。trend 仅允许 up、down、stable 三种取值。",
         "properties": {
+          "prediction_status": {
+            "type": "string",
+            "description": "预测状态：ready=当前最新历史窗口已完成预测；pending=实时数据已更新但新预测仍在后台生成中，此时可能先返回上一版预测结果，也可能暂时没有预测值；failed=预测失败，建议前端提示预测失败或保留上一版结果",
+            "enum": ["ready", "pending", "failed"],
+            "example": "ready"
+          },
           "predicted_value": {
             "type": "number",
             "nullable": true,

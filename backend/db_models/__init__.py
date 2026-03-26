@@ -27,6 +27,8 @@ from .knowledge_base import KnowledgeBase, KnowledgeDocument
 from .alert_rule import AlertRule
 from .alert_notification import AlertNotification
 from .work_task import WorkTask
+from .weather_cache import WeatherCache
+from .pond_prediction_run import PondPredictionRun
 
 __all__ = [
     "Base",
@@ -63,4 +65,6 @@ __all__ = [
     "AlertRule",
     "AlertNotification",
     "WorkTask",
+    "WeatherCache",
+    "PondPredictionRun",
 ]

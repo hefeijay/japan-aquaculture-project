@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, and_, or_
+from sqlalchemy import desc, and_, or_, func
 from sqlalchemy.orm import Session
 
 from config.settings import Config
@@ -25,6 +25,8 @@ from db_models.camera import CameraImage
 from db_models.pond import Pond
 from db_models.ai_decision import AIDecision
 from db_models.message_queue import MessageQueue
+from services.prediction_service import prediction_service
+from services.weather_cache_service import weather_cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,63 @@ class PondRealtimeService:
     @staticmethod
     def _get_pond_or_none(session: Session, pond_id: int) -> Optional[Pond]:
         return session.query(Pond).filter(Pond.id == pond_id).first()
+
+    @staticmethod
+    def _reading_order_expr():
+        return func.coalesce(
+            SensorReading.ts_utc,
+            SensorReading.recorded_at,
+            SensorReading.created_at,
+        )
+
+    @classmethod
+    def _get_recent_sensor_readings(
+        cls,
+        session: Session,
+        device_id: int,
+        limit: int,
+    ) -> List[SensorReading]:
+        readings = (
+            session.query(SensorReading)
+            .filter(SensorReading.device_id == device_id)
+            .order_by(desc(cls._reading_order_expr()))
+            .limit(limit)
+            .all()
+        )
+        readings.reverse()
+        return readings
+
+    @classmethod
+    def _build_history_points(cls, readings: List[SensorReading]) -> List[Dict[str, Any]]:
+        points: List[Dict[str, Any]] = []
+        for reading in readings:
+            timestamp = reading.ts_utc or reading.recorded_at or reading.created_at
+            if not timestamp:
+                continue
+            points.append(
+                {
+                    "timestamp": int(timestamp.timestamp() * 1000),
+                    "value": cls._safe_float(reading.value),
+                    "time": timestamp.astimezone(_LOCAL_TZ).strftime("%H:%M")
+                    if timestamp.tzinfo
+                    else timestamp.strftime("%H:%M"),
+                }
+            )
+        return points
+
+    @staticmethod
+    def _resolve_status(
+        value: Optional[float],
+        valid_min: Optional[float],
+        valid_max: Optional[float],
+    ) -> str:
+        status = "normal"
+        if value is not None:
+            if valid_min is not None and value < valid_min:
+                status = "abnormal_low"
+            elif valid_max is not None and value > valid_max:
+                status = "abnormal_high"
+        return status
 
     # ------------------------------------------------------------------
     # API 4: GET /v1/ponds/<pond_id>/devices
@@ -152,6 +211,8 @@ class PondRealtimeService:
         cls, pond_id: int
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         try:
+            prediction_service.ensure_tables()
+            weather_cache_service.ensure_tables()
             with db_session_factory() as session:
                 pond = cls._get_pond_or_none(session, pond_id)
                 if not pond:
@@ -170,24 +231,22 @@ class PondRealtimeService:
 
                 sensors: List[Dict[str, Any]] = []
                 for device, _dt, sensor_type in sensor_devices:
-                    latest = (
-                        session.query(SensorReading)
-                        .filter(SensorReading.device_id == device.id)
-                        .order_by(desc(SensorReading.created_at))
-                        .first()
+                    readings = cls._get_recent_sensor_readings(
+                        session,
+                        device.id,
+                        limit=Config.PREDICTION_HISTORY_LIMIT,
                     )
+                    latest = readings[-1] if readings else None
 
                     value = cls._safe_float(latest.value) if latest else None
                     valid_min = cls._safe_float(sensor_type.valid_min)
                     valid_max = cls._safe_float(sensor_type.valid_max)
-                    recorded_at = latest.recorded_at if latest else None
-
-                    status = "normal"
-                    if value is not None:
-                        if valid_min is not None and value < valid_min:
-                            status = "abnormal_low"
-                        elif valid_max is not None and value > valid_max:
-                            status = "abnormal_high"
+                    recorded_at = (
+                        latest.ts_utc or latest.recorded_at or latest.created_at
+                        if latest else None
+                    )
+                    history_points = cls._build_history_points(readings)
+                    status = cls._resolve_status(value, valid_min, valid_max)
 
                     sensors.append(
                         {
@@ -201,8 +260,47 @@ class PondRealtimeService:
                             "status": status,
                             "recorded_at": cls._utc_iso(recorded_at),
                             "recorded_at_local": cls._utc_to_local(recorded_at),
+                            "history_points": history_points,
                         }
                     )
+
+                weather_cache = weather_cache_service.get_weather_for_pond(pond)
+                prediction_bundle = prediction_service.get_prediction_bundle(
+                    pond=pond,
+                    sensors=sensors,
+                    weather_cache=weather_cache,
+                )
+                prediction_map = prediction_service.build_prediction_map(prediction_bundle)
+
+                for sensor in sensors:
+                    prediction = prediction_map.get(sensor["device_id"])
+                    if prediction:
+                        predicted_for_at = prediction.get("predicted_for_at")
+                        predicted_for_dt = None
+                        if predicted_for_at:
+                            try:
+                                predicted_for_dt = datetime.fromisoformat(predicted_for_at)
+                            except ValueError:
+                                predicted_for_dt = None
+                        sensor["prediction"] = {
+                            "prediction_status": prediction.get("prediction_status", "ready"),
+                            "predicted_value": prediction.get("predicted_value"),
+                            "trend": prediction.get("trend"),
+                            "analysis_text": prediction.get("analysis_text"),
+                            "reason_text": prediction.get("reason_text"),
+                            "predicted_for_at": predicted_for_at,
+                            "predicted_for_at_local": cls._utc_to_local(predicted_for_dt),
+                        }
+                    else:
+                        sensor["prediction"] = {
+                            "prediction_status": prediction_bundle.get("status", "pending"),
+                            "predicted_value": None,
+                            "trend": "stable",
+                            "analysis_text": None,
+                            "reason_text": None,
+                            "predicted_for_at": None,
+                            "predicted_for_at_local": None,
+                        }
 
                 data = {
                     "pond_id": pond.id,
