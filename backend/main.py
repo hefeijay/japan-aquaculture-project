@@ -12,6 +12,7 @@ from config.settings import Config
 from services.aggregator_service import aggregator_service
 from services.heartbeat_ws_service import HeartbeatWSService
 from services.weather_cache_service import weather_cache_service
+from services.work_task_service import WorkTaskService
 
 import logging
 
@@ -31,6 +32,12 @@ def main():
     app = create_app()
 
     if not _is_reloader_process():
+        # 启动时确保任务管理表存在（不存在则自动创建）
+        try:
+            WorkTaskService.ensure_tables()
+        except Exception as e:
+            logger.error(f"初始化任务表失败: {e}")
+
         # 启动周期聚合服务（后台线程）
         try:
             aggregator_service.start()

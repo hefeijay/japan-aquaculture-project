@@ -12,7 +12,9 @@ import logging
 from sqlalchemy import or_, desc
 from sqlalchemy.orm import Session
 
+from db_models.base import Base
 from db_models.db_session import db_session_factory
+from db_models.db_session import get_engine
 from db_models.work_task import WorkTask
 from db_models.user import User
 from db_models.pond import Pond
@@ -22,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 class WorkTaskService:
     """任务管理中心服务类"""
+
+    @classmethod
+    def ensure_tables(cls) -> None:
+        """确保任务表存在。"""
+        try:
+            Base.metadata.create_all(get_engine(), tables=[WorkTask.__table__])
+        except Exception as e:
+            logger.error(f"创建任务表失败: {str(e)}", exc_info=True)
 
     @classmethod
     def generate_task_id(cls, session: Session) -> str:
