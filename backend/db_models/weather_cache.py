@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import datetime
 
-from sqlalchemy import Index, Integer, String, TIMESTAMP, text
+from sqlalchemy import DateTime, Index, Integer, String, TIMESTAMP, text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,13 +41,13 @@ class WeatherCache(Base):
     )
 
     fetched_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
+        DateTime,
         nullable=False,
         comment="抓取时间",
     )
 
     expires_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
+        DateTime,
         nullable=False,
         comment="过期时间",
     )
