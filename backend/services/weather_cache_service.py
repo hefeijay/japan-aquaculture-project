@@ -106,7 +106,7 @@ class WeatherCacheService:
             if not payload:
                 return None
 
-            fetched_at = datetime.utcnow()
+            fetched_at = datetime.now()
             expires_at = fetched_at + timedelta(hours=Config.WEATHER_CACHE_TTL_HOURS)
 
             with db_session_factory() as session:
@@ -128,7 +128,7 @@ class WeatherCacheService:
             return None
 
     def _get_latest_valid_cache(self, session, location_key: str) -> Optional[WeatherCache]:
-        now = datetime.utcnow()
+        now = datetime.now()
         return (
             session.query(WeatherCache)
             .filter(WeatherCache.location_key == location_key)
