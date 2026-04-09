@@ -277,7 +277,7 @@ class Config:
     ALERT_SCHEDULER_THREAD_POOL_SIZE = int(os.getenv('ALERT_SCHEDULER_THREAD_POOL_SIZE', '10'))
 
     # ==================== 心跳 WebSocket 监控配置 ====================
-    HEARTBEAT_WS_PORT = int(os.getenv('HEARTBEAT_WS_PORT', '12800'))
+    HEARTBEAT_WS_PORT = int(os.getenv('HEARTBEAT_WS_PORT', '8001'))
     HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv('HEARTBEAT_TIMEOUT_SECONDS', '300'))
     HEARTBEAT_CHECK_INTERVAL_SECONDS = int(os.getenv('HEARTBEAT_CHECK_INTERVAL_SECONDS', '30'))
     HEARTBEAT_ALERT_COOLDOWN_SECONDS = int(os.getenv('HEARTBEAT_ALERT_COOLDOWN_SECONDS', '3600'))

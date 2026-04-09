@@ -1,134 +1,134 @@
-# 日本陆上养殖生产管理AI助手服务端
+# Backend 服务
 
-## 项目重构说明
+这是 `japan-aquaculture-project/backend` 的目录级 README。  
+当前目录是实际运行中的 Flask 后端；如历史文档、旧 README 与代码不一致，请优先以入口文件、蓝图注册和配置文件为准。
 
-原始的 `app.py` 文件（506行）已经被重构为模块化架构，提高了代码的可维护性和可扩展性。
+## 当前已确认入口
 
-## 新的项目结构
+- 主入口：`main.py`
+- 兼容入口：`app.py`
+- 应用工厂：`app_factory.py`
+- 默认监听：`0.0.0.0:5002`
+- 附加监听：心跳监控 WebSocket 端口由 `HEARTBEAT_WS_PORT` 控制
+- 核心配置：`config/settings.py`
 
-```
-japan_server/
-├── __init__.py              # 包初始化文件
-├── app.py                   # 简化的入口文件（向后兼容）
-├── app_old.py              # 原始文件备份
-├── main.py                 # 新的主入口文件
-├── app_factory.py          # Flask应用工厂
-├── config/                 # 配置模块
-│   ├── __init__.py
-│   └── settings.py         # 所有配置和常量
-├── services/               # 服务模块
-│   ├── __init__.py
-│   └── data_generator.py   # 数据生成服务
-└── routes/                 # 路由模块
-    ├── __init__.py
-    ├── api_routes.py       # API路由蓝图
-    └── main_routes.py      # 主路由蓝图
-```
+## 目录说明
 
-## 重构优势
+- `config/`：运行配置与环境变量读取逻辑。
+- `routes/`：Flask 蓝图，按业务拆分接口。
+- `services/`：业务服务、后台线程和外部系统集成。
+- `db_models/`：SQLAlchemy ORM 模型与数据库实例汇总。
+- `api_docs/`：接口相关文档、OpenAPI 文件和导入说明。
+- `scripts/`：数据修复、迁移和排查脚本。
+- `utils/`：认证、钉钉通知等通用辅助逻辑。
 
-### 1. 模块化设计
-- **配置分离**: 所有配置项集中在 `config/settings.py`
-- **服务分离**: 数据生成逻辑独立为服务模块
-- **路由分离**: API路由使用Flask蓝图进行组织
+## 快速启动
 
-### 2. 代码可维护性
-- **单一职责**: 每个模块负责特定功能
-- **易于测试**: 模块化结构便于单元测试
-- **易于扩展**: 新功能可以独立添加到相应模块
+### 1. 安装依赖
 
-### 3. 向后兼容性
-- 保留原始 `app.py` 入口点
-- API端点和功能完全一致
-- 无需修改客户端代码
-
-## 启动方式
-
-### 方式1: 使用原始入口（向后兼容）
 ```bash
-python japan_server/app.py
+cd /home/gmm/srv/japan-aquaculture-project
+uv sync
 ```
 
-### 方式2: 使用新的模块化入口
+补充说明：
+
+- 当前项目的 Python 依赖统一定义在仓库根目录 `pyproject.toml`。
+- Backend 代码还会使用 `paho-mqtt` 与 MQTT Broker 通信；如果运行环境没有该依赖，需要额外安装后再启用 MQTT 相关能力。
+
+### 2. 初始化数据库
+
 ```bash
-python -m japan_server.main
-```
-
-### 方式3: 作为包导入使用
-```python
-from japan_server.app_factory import create_app
-app = create_app()
-app.run()
-```
-
-## API端点
-
-所有API端点保持不变：
-
-- `GET /` - 服务信息
-- `GET /api/health` - 健康检查
-- `GET /api/ai/decisions/recent` - AI决策消息
-- `GET /api/sensors/realtime` - 传感器实时数据
-- `GET /api/devices/status` - 设备状态
-- `GET /api/location/data` - 地理位置数据
-- `GET /api/cameras/{id}/status` - 摄像头状态
-
-## 配置管理
-
-所有配置项现在集中在 `config/settings.py` 中：
-
-- 消息类型和模板
-- 传感器配置
-- 设备配置
-- 地理位置数据
-- Flask应用配置
-
-### 环境配置 (.env)
-
-为与 `/usr/henry/cognitive-center/external_data_server` 保持一致，项目支持通过 `.env` 文件加载配置。优先顺序为：`DATABASE_URL` > `MYSQL_*` 分段变量 > 默认值。
-
-在项目根目录创建 `.env`（推荐在仓库根或 `japan_server/` 目录下），示例：
-
-```
-# 基础应用
-HOST=0.0.0.0
-PORT=5002
-DEBUG=false
-
-# 完整数据库URI（若设置，将覆盖下方分段变量）
-# DATABASE_URL=mysql+pymysql://root:Root155017@rm-0iwx9y9q368yc877wbo.mysql.japan.rds.aliyuncs.com:3306/cognitive
-
-# 分段数据库变量（将自动拼接为URI）
-MYSQL_HOST=rm-0iwx9y9q368yc877wbo.mysql.japan.rds.aliyuncs.com
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=Root155017
-MYSQL_DATABASE=cognitive
+cd /home/gmm/srv/japan-aquaculture-project
+uv run python scripts/init_database.py
 ```
 
 说明：
-- 如果使用 `python-dotenv`，会在模块导入阶段自动读取 `.env`；如果未安装，也有内置回退解析，不影响运行。
-- `.env` 位于 `japan_server/` 目录或仓库根均可；若两处都存在，优先读取 `japan_server/.env`。
-- 运行命令保持不变：`python -m japan_server.main`。
 
-## 开发建议
+- `scripts/init_database.py` 会创建 Flask 应用上下文并执行 `db.create_all()`。
+- 除了初始化脚本，`main.py` 启动时还会调用 `WorkTaskService.ensure_tables()`，用于确保任务管理表存在。
 
-1. **添加新API**: 在 `routes/` 目录下创建新的蓝图文件
-2. **修改配置**: 编辑 `config/settings.py` 文件
-3. **添加服务**: 在 `services/` 目录下创建新的服务模块
-4. **测试**: 每个模块都可以独立进行单元测试
+### 3. 启动 Backend
 
-## 性能优化
+```bash
+cd /home/gmm/srv/japan-aquaculture-project/backend
+uv run python main.py
+```
 
-重构后的代码具有以下性能优势：
+也可以使用兼容入口：
 
-- **更快的启动时间**: 模块按需加载
-- **更好的内存管理**: 功能分离减少内存占用
-- **更高的并发性**: 蓝图支持更好的请求处理
+```bash
+cd /home/gmm/srv/japan-aquaculture-project/backend
+uv run python app.py
+```
 
-## 维护说明
+## 运行特性
 
-- `app_old.py`: 原始文件备份，可在需要时参考
-- 所有新功能应该添加到相应的模块中
-- 配置修改应该在 `config/settings.py` 中进行
-- 保持向后兼容性，避免破坏现有API
+- `main.py` 在创建 Flask 应用后，会继续按配置启动周期聚合、天气缓存、心跳监控、MQTT 和设备连接监控等后台能力。
+- `app_factory.py` 在应用初始化过程中还会注册蓝图，并尝试初始化预警调度器。
+- 调试或排障时，不能只看 Flask 主进程是否存活，还要结合相关后台线程、独立监听端口和依赖服务一起判断。
+- `app.py` 目前只是兼容入口，实际启动逻辑集中在 `main.py` 和 `app_factory.py`。
+
+## 网络监听说明
+
+- HTTP 服务默认监听 `HOST:PORT`，代码默认值为 `0.0.0.0:5002`。
+- 除 Flask HTTP 服务外，`main.py` 还会启动一个独立的心跳监控 WebSocket 服务。
+- 心跳监控端口来自 `HEARTBEAT_WS_PORT`。
+- 如果不设置环境变量，代码中的默认值是 `8001`。
+- `.env.example` 里的示例值也与当前代码默认值一致，都是 `8001`。
+
+## 接口文档说明
+
+- 本 README 不重复罗列全部接口，避免与专门接口文档重复维护后产生偏差。
+- 接口说明请统一查看专门接口文档，以及当前目录下的 `api_docs/`。
+- 当文档与代码不一致时，应以 `routes/` 下蓝图实现和 `app_factory.py` 中实际注册结果为准。
+
+可优先查看：
+
+- `api_docs/README.md`
+- `api_docs/openapi.yaml`
+- `api_docs/import_guide.md`
+
+## 环境变量范围
+
+- 服务：`HOST`、`PORT`、`DEBUG`
+- 认证：`ENABLE_AUTH`、`JWT_SECRET_KEY`
+- 数据库：`DATABASE_URL` 或 `MYSQL_*`
+- 聚合：`AGGREGATOR_*`
+- 天气：`WEATHER_*`，以及兼容读取的 `OPENWEATHER_API_KEY`
+- AI/预测：`PREDICTION_*`、`OPENAI_*`
+- 预警调度：`ALERT_*`
+- 设备与监控：`MQTT_*`、`DEVICE_*`、`HEARTBEAT_*`
+- 实时推送：`SSE_*`
+- 告警通知：`DINGTALK_ACCESS_TOKEN`、`DINGTALK_SECRET`
+- 其他：`FILE_FORWARD_URL`、`LOCAL_TIMEZONE_OFFSET`
+
+配置补充：
+
+- `config/settings.py` 会优先尝试加载 `backend/.env`。
+- 如果 `WEATHER_API_KEY` 未设置，天气逻辑会回退读取 `OPENWEATHER_API_KEY`。
+- 生产环境建议显式设置 `DEBUG=false`，因为代码默认是开启调试模式。
+
+最终请以 `config/settings.py` 为准。
+
+## 重要提醒
+
+1. 老文档中出现的 `japan_server`、`python -m japan_server.main`、`/srv/japan_server` 等说法已不适用于当前目录。
+2. `config/settings.py` 中 `ENDPOINTS` 的部分值仍保留旧写法，不能把它当作完整且最新的接口清单使用。
+3. `api_docs/` 中已有文档主要用于接口说明和导入；如果后续专门接口文档已单独维护，应优先遵循专门接口文档的统一口径。
+4. 部署或排障时，不要只关注 `5002` 端口；还要同时核对独立心跳 WebSocket 端口、MQTT Broker、数据库和预警调度是否正常。
+5. `uv sync` 能覆盖大部分依赖，但 MQTT 功能仍要额外确认 `paho-mqtt` 是否已经安装。
+6. 认证、天气、钉钉告警、MQTT 和设备监控都有各自的环境变量开关或依赖条件，功能异常时应优先从配置和外部依赖联调排查。
+
+## 建议优先阅读
+
+- `main.py`
+- `app_factory.py`
+- `config/settings.py`
+- `routes/main_routes.py`
+- `routes/api_routes.py`
+- `services/heartbeat_ws_service.py`
+- `services/mqtt_service.py`
+- `services/device_monitor_service.py`
+- `scripts/init_database.py`
+- `.env.example`

@@ -1,148 +1,65 @@
 # APIfox 导入指南
 
-## 快速开始
+本指南用于导入 `backend/api_docs/openapi.yaml`。
 
-### 步骤 1：准备文档文件
+## 当前应看到的接口
 
-确保你已经有了以下文件之一：
-- `openapi.yaml` (推荐)
-- `openapi.json`
+导入成功后，上传接口应为：
 
-### 步骤 2：打开 APIfox
+- `POST /api/v1/upload`
+- `POST /api/v1/upload/multiple`
 
-- **网页版**: 访问 https://apifox.com
-- **客户端**: 打开 APIfox 桌面应用
+如果你在 APIfox 中看到的是 `/api/upload` 或 `/api/upload/multiple`，说明导入的文档版本过旧，或参考了历史说明。
 
-### 步骤 3：导入文档
+## 导入步骤
 
-#### 方式 A：通过导入菜单
+1. 打开 APIfox。
+2. 选择“导入”。
+3. 选择 OpenAPI/Swagger。
+4. 选择 `openapi.yaml`。
+5. 完成导入。
 
-1. 在 APIfox 中，点击左侧菜单的 **"导入"** 图标
-2. 选择 **"OpenAPI"** 或 **"Swagger"**
-3. 选择 **"从文件导入"**
-4. 浏览并选择 `openapi.yaml` 或 `openapi.json`
-5. 选择导入位置：
-   - **新建项目**：创建一个新项目
-   - **导入到现有项目**：选择现有项目
-6. 点击 **"开始导入"**
+## 建议环境变量
 
-#### 方式 B：拖拽导入
+```text
+base_url = http://localhost:5002
+forward_url = http://example.com/api/upload
+```
 
-1. 打开文件管理器，找到 `openapi.yaml` 或 `openapi.json`
-2. 直接将文件拖拽到 APIfox 窗口
-3. 按照提示完成导入
+## 测试单文件上传
 
-### 步骤 4：验证导入
+1. 打开 `POST /api/v1/upload`。
+2. 选择 `form-data`。
+3. 添加字段：
+   - `file`：文件
+   - `description`：可选文本
+4. 发送请求。
 
-导入成功后，检查以下内容：
+## 测试多文件上传
 
-✅ **接口列表**
-- 应该看到 "文件上传" 标签
-- 包含两个接口：
-  - `POST /api/upload`
-  - `POST /api/upload/multiple`
-
-✅ **接口详情**
-- 每个接口都有完整的描述
-- 请求参数已正确配置
-- 响应示例已包含
-- 错误响应已定义
-
-✅ **服务器配置**
-- 默认服务器：`http://localhost:5002`
-- 可以添加其他环境（开发、测试、生产）
-
-## 配置环境变量
-
-导入后，建议配置环境变量以便测试：
-
-1. 在 APIfox 中，进入 **"环境管理"**
-2. 创建新环境或编辑现有环境
-3. 添加以下变量：
-   ```
-   base_url = http://localhost:5002
-   forward_url = http://example.com/api/upload  # 可选
-   ```
-
-## 测试接口
-
-### 测试单文件上传
-
-1. 打开 `POST /api/upload` 接口
-2. 切换到 **"Body"** 标签
-3. 选择 **"form-data"** 类型
-4. 添加字段：
-   - **字段名**: `file`
-   - **类型**: `File`
-   - **值**: 选择一个测试文件
-5. 点击 **"发送"** 按钮
-6. 查看响应结果
-
-### 测试多文件上传
-
-1. 打开 `POST /api/upload/multiple` 接口
-2. 切换到 **"Body"** 标签
-3. 选择 **"form-data"** 类型
-4. 添加字段：
-   - **字段名**: `files[]`
-   - **类型**: `File`
-   - **值**: 选择多个测试文件（可重复添加）
-5. 点击 **"发送"** 按钮
-6. 查看响应结果
+1. 打开 `POST /api/v1/upload/multiple`。
+2. 选择 `form-data`。
+3. 重复添加字段：
+   - `files[]`：文件
+4. 发送请求。
 
 ## 常见问题
 
-### Q: 导入后看不到接口？
+### 导入后接口路径不对
 
-**A**: 检查以下几点：
-- 确认文件格式正确（YAML 或 JSON）
-- 检查 APIfox 版本是否支持 OpenAPI 3.0
-- 尝试重新导入或刷新页面
+- 以 `openapi.yaml` 和当前代码 `routes/file_upload_routes.py` 为准。
+- 当前真实前缀是 `/api/v1`。
 
-### Q: 文件上传测试失败？
+### 文件上传失败
 
-**A**: 检查以下几点：
-- 确认服务器正在运行（`http://localhost:5002`）
-- 检查文件字段名是否正确（单文件用 `file`，多文件用 `files[]`）
-- 确认文件类型在允许列表中
-- 查看服务器日志获取详细错误信息
+- 确认服务运行在 `http://localhost:5002`
+- 确认字段名正确：单文件用 `file`，多文件用 `files[]`
+- 检查 `FILE_FORWARD_URL` 是否影响转发行为
 
-### Q: 如何修改服务器地址？
+## 提醒
 
-**A**: 
-1. 进入 **"环境管理"**
-2. 编辑环境变量 `base_url`
-3. 或者在接口详情中直接修改 URL
-
-### Q: 转发功能不工作？
-
-**A**: 
-1. 检查服务器配置中的 `FILE_FORWARD_URL` 环境变量
-2. 确认转发地址可访问
-3. 查看响应中的 `forward` 字段了解详细信息
-
-## 更新文档
-
-如果接口有更新，可以：
-
-1. 更新 `openapi.yaml` 文件
-2. 在 APIfox 中重新导入（选择覆盖现有接口）
-3. 或者手动在 APIfox 中编辑接口
-
-## 导出文档
-
-APIfox 也支持导出文档：
-
-1. 在 APIfox 中，选择项目
-2. 点击 **"导出"** -> **"OpenAPI"**
-3. 选择导出格式和版本
-4. 保存文件
-
-## 更多资源
-
-- [APIfox 官方文档](https://apifox-openapi.apifox.cn/)
-- [OpenAPI 规范](https://swagger.io/specification/)
-- [项目 README](../README.md)
+1. 本目录的接口说明只覆盖当前 OpenAPI 文档涉及的能力，不代表整个 Backend 的全部接口。
+2. 生产环境若有反向代理，请把 `base_url` 改成真实地址。
 
 
 
